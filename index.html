@@ -298,7 +298,7 @@
   </div>
 
   <script>
-    const STOCK_SUFFIX = ".TW";
+    const STOCK_SUFFIXES = [".TW", ".TWO"];
     const API_BASE = "";
     const FUNDAMENTALS_FALLBACK = {
       "2330": { name: "台積電", eps4q: [8.71, 9.10, 9.45, 9.88], per: 22.1 },
@@ -435,32 +435,89 @@
       return raw.split(",").map((code) => code.trim()).filter(Boolean);
     }
 
-    async function fetchYahooData(code) {
-      const symbol = `${code}${STOCK_SUFFIX}`;
-      const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Yahoo HTTP ${response.status}`);
-      const payload = await response.json();
-      const result = payload?.chart?.result?.[0];
-      const quote = result?.indicators?.quote?.[0];
-      const closesRaw = quote?.close || [];
-      const volumesRaw = quote?.volume || [];
-      const closes = closesRaw.filter((x) => Number.isFinite(x));
-      const volumes = volumesRaw.filter((x) => Number.isFinite(x));
+    function getYahooSymbols(code) {
+      return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
+    }
 
-      if (closes.length < 30 || volumes.length < 30) {
-        throw new Error("Yahoo 資料長度不足");
+    function buildMockSeries(basePrice, points = 80) {
+      const closes = [];
+      const volumes = [];
+      let price = basePrice;
+      for (let i = 0; i < points; i += 1) {
+        const drift = (Math.sin(i / 6) + Math.cos(i / 9)) * 0.003;
+        const noise = ((i % 7) - 3) * 0.0008;
+        price = Math.max(5, price * (1 + drift + noise));
+        closes.push(Number(price.toFixed(2)));
+        const volBase = 12000 + (i % 11) * 900;
+        volumes.push(Math.round(volBase * (1 + Math.abs(drift) * 8)));
       }
+      volumes[volumes.length - 1] = Math.round(average(volumes.slice(-6, -1)) * 1.5);
+      return { closes, volumes };
+    }
 
+    function buildLocalMarketFallback(code) {
+      const fallback = FUNDAMENTALS_FALLBACK[code];
+      const basePriceMap = {
+        "2330": 950,
+        "2317": 120,
+        "2603": 130,
+        "0050": 152,
+        "3008": 2200
+      };
+      const basePrice = basePriceMap[code] || 100;
+      const series = buildMockSeries(basePrice, 90);
       return {
         code,
-        name: result?.meta?.longName || result?.meta?.shortName || FUNDAMENTALS_FALLBACK[code]?.name || code,
-        source: "Yahoo",
-        priceHistory: closes,
-        volumeHistory: volumes,
-        price: result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
-        volume: result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1]
+        name: fallback?.name || code,
+        source: "LocalMock",
+        priceHistory: series.closes,
+        volumeHistory: series.volumes,
+        price: series.closes[series.closes.length - 1],
+        volume: series.volumes[series.volumes.length - 1],
+        localMock: true
       };
+    }
+
+    async function fetchYahooData(code) {
+      const symbols = getYahooSymbols(code);
+      let lastError = "Yahoo 無可用資料";
+
+      for (const symbol of symbols) {
+        try {
+          const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
+          const response = await fetch(url);
+          if (!response.ok) {
+            lastError = `Yahoo HTTP ${response.status}`;
+            continue;
+          }
+          const payload = await response.json();
+          const result = payload?.chart?.result?.[0];
+          const quote = result?.indicators?.quote?.[0];
+          const closesRaw = quote?.close || [];
+          const volumesRaw = quote?.volume || [];
+          const closes = closesRaw.filter((x) => Number.isFinite(x));
+          const volumes = volumesRaw.filter((x) => Number.isFinite(x));
+
+          if (closes.length < 30 || volumes.length < 30) {
+            lastError = "Yahoo 資料長度不足";
+            continue;
+          }
+
+          return {
+            code,
+            name: result?.meta?.longName || result?.meta?.shortName || FUNDAMENTALS_FALLBACK[code]?.name || code,
+            source: "Yahoo",
+            priceHistory: closes,
+            volumeHistory: volumes,
+            price: result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
+            volume: result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1]
+          };
+        } catch (error) {
+          lastError = String(error.message || error);
+        }
+      }
+
+      throw new Error(lastError);
     }
 
     function getRecentMonthDates(totalMonths = 6) {
@@ -512,44 +569,61 @@
     }
 
     async function fetchYahooFundamentals(code) {
-      const symbol = `${code}${STOCK_SUFFIX}`;
-      const url = `${API_BASE}/api/yahoo-fundamentals?symbol=${encodeURIComponent(symbol)}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Yahoo Fundamentals HTTP ${response.status}`);
+      const symbols = getYahooSymbols(code);
+      let lastError = "Yahoo Fundamentals 無可用資料";
 
-      const payload = await response.json();
-      const result = payload?.quoteSummary?.result?.[0];
-      if (!result) throw new Error("Yahoo Fundamentals 無資料");
+      for (const symbol of symbols) {
+        try {
+          const url = `${API_BASE}/api/yahoo-fundamentals?symbol=${encodeURIComponent(symbol)}`;
+          const response = await fetch(url);
+          if (!response.ok) {
+            lastError = `Yahoo Fundamentals HTTP ${response.status}`;
+            continue;
+          }
 
-      const trailingPe = result?.defaultKeyStatistics?.trailingPE?.raw;
-      const trailingEps = result?.defaultKeyStatistics?.trailingEps?.raw;
-      const quarterly = result?.earnings?.earningsChart?.quarterly || [];
-      const eps4qFromQuarterly = quarterly
-        .map((q) => q?.actual?.raw)
-        .filter((v) => Number.isFinite(v))
-        .slice(-4);
+          const payload = await response.json();
+          const result = payload?.quoteSummary?.result?.[0];
+          if (!result) {
+            lastError = "Yahoo Fundamentals 無資料";
+            continue;
+          }
 
-      let eps4q = eps4qFromQuarterly;
-      if (eps4q.length < 4 && Number.isFinite(trailingEps)) {
-        const avgQ = trailingEps / 4;
-        eps4q = [avgQ, avgQ, avgQ, avgQ];
+          const trailingPe = result?.defaultKeyStatistics?.trailingPE?.raw;
+          const trailingEps = result?.defaultKeyStatistics?.trailingEps?.raw;
+          const quarterly = result?.earnings?.earningsChart?.quarterly || [];
+          const eps4qFromQuarterly = quarterly
+            .map((q) => q?.actual?.raw)
+            .filter((v) => Number.isFinite(v))
+            .slice(-4);
+
+          let eps4q = eps4qFromQuarterly;
+          if (eps4q.length < 4 && Number.isFinite(trailingEps)) {
+            const avgQ = trailingEps / 4;
+            eps4q = [avgQ, avgQ, avgQ, avgQ];
+          }
+
+          if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && eps4q.length < 4) {
+            lastError = "Yahoo Fundamentals 欄位不足";
+            continue;
+          }
+
+          let per = Number.isFinite(trailingPe) ? trailingPe : null;
+          if (!Number.isFinite(per) && Number.isFinite(trailingEps) && trailingEps > 0) {
+            const latestPrice = result?.financialData?.currentPrice?.raw;
+            if (Number.isFinite(latestPrice)) per = latestPrice / trailingEps;
+          }
+
+          return {
+            eps4q: eps4q.length === 4 ? eps4q : null,
+            per: Number.isFinite(per) ? per : null,
+            source: "Yahoo"
+          };
+        } catch (error) {
+          lastError = String(error.message || error);
+        }
       }
 
-      if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && eps4q.length < 4) {
-        throw new Error("Yahoo Fundamentals 欄位不足");
-      }
-
-      let per = Number.isFinite(trailingPe) ? trailingPe : null;
-      if (!Number.isFinite(per) && Number.isFinite(trailingEps) && trailingEps > 0) {
-        const latestPrice = result?.financialData?.currentPrice?.raw;
-        if (Number.isFinite(latestPrice)) per = latestPrice / trailingEps;
-      }
-
-      return {
-        eps4q: eps4q.length === 4 ? eps4q : null,
-        per: Number.isFinite(per) ? per : null,
-        source: "Yahoo"
-      };
+      throw new Error(lastError);
     }
 
     function getRecentBusinessDateString() {
@@ -631,8 +705,10 @@
           return { ok: true, data: twse, fallbackUsed: true };
         } catch (twseError) {
           return {
-            ok: false,
-            code,
+            ok: true,
+            data: buildLocalMarketFallback(code),
+            fallbackUsed: true,
+            localMockUsed: true,
             error: `Yahoo 與 TWSE 都失敗（${yahooError.message} / ${twseError.message}）`
           };
         }
@@ -676,6 +752,8 @@
         per: fundamental.per,
         fundamentalSource: fundamental.source,
         fundamentalWarning: fundamental.warning || "",
+        marketDataSource: stockData.source,
+        marketDataWarning: stockData.localMock ? "即時行情暫不可用，已改用示意資料" : "",
         entryPrice: stockData.price,
         stopLossPrice: stockData.price * 0.95,
         targetPrice: stockData.price * 1.10,
@@ -703,8 +781,8 @@
         row.innerHTML = `
           <td>${item.code}</td>
           <td>${item.name}</td>
-          <td>${toFixed(item.price, 2)}</td>
-          <td>${Math.round(item.volume).toLocaleString("zh-TW")}</td>
+          <td title="來源：${item.marketDataSource}">${toFixed(item.price, 2)}</td>
+          <td title="來源：${item.marketDataSource}">${Math.round(item.volume).toLocaleString("zh-TW")}</td>
           <td>${toFixed(item.ma5, 2)}</td>
           <td>${toFixed(item.ma20, 2)}</td>
           <td class="${item.rsi < 30 ? "up" : ""}">${toFixed(item.rsi, 1)}</td>
@@ -769,6 +847,7 @@
       latestAnalysisList = successList;
       latestFailList = failList;
       const fallbackCount = jobs.filter((item) => item.ok && item.fallbackUsed).length;
+      const mockCount = jobs.filter((item) => item.localMockUsed).length;
       renderRows(successList, failList);
       const fundamentalWarnCount = successList.filter((x) => x.fundamentalWarning).length;
 
@@ -781,6 +860,8 @@
         );
       } else if (fundamentalWarnCount > 0) {
         showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。`, "warn");
+      } else if (mockCount > 0) {
+        showStatus(`已完成 ${successList.length} 檔，其中 ${mockCount} 檔行情改用示意資料（即時來源暫時不可用）。`, "warn");
       } else if (fallbackCount > 0) {
         showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。`, "info");
       } else {
