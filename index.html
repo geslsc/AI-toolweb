@@ -484,6 +484,11 @@
 
       for (const symbol of symbols) {
         try {
+          const quoteUrl = `${API_BASE}/api/yahoo-quote?symbols=${encodeURIComponent(symbol)}`;
+          const quoteRes = await fetch(quoteUrl);
+          const quotePayload = quoteRes.ok ? await quoteRes.json() : null;
+          const quoteItem = quotePayload?.quoteResponse?.result?.[0];
+
           const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
           const response = await fetch(url);
           if (!response.ok) {
@@ -509,8 +514,9 @@
             source: "Yahoo",
             priceHistory: closes,
             volumeHistory: volumes,
-            price: result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
-            volume: result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1]
+            price: quoteItem?.regularMarketPrice ?? result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
+            volume: quoteItem?.regularMarketVolume ?? result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1],
+            marketTime: quoteItem?.regularMarketTime ? quoteItem.regularMarketTime * 1000 : null
           };
         } catch (error) {
           lastError = String(error.message || error);
@@ -753,6 +759,7 @@
         fundamentalSource: fundamental.source,
         fundamentalWarning: fundamental.warning || "",
         marketDataSource: stockData.source,
+        marketTime: stockData.marketTime || null,
         marketDataWarning: stockData.localMock ? "即時行情暫不可用，已改用示意資料" : "",
         entryPrice: stockData.price,
         stopLossPrice: stockData.price * 0.95,
@@ -781,7 +788,7 @@
         row.innerHTML = `
           <td>${item.code}</td>
           <td>${item.name}</td>
-          <td title="來源：${item.marketDataSource}">${toFixed(item.price, 2)}</td>
+          <td title="來源：${item.marketDataSource}${item.marketTime ? `，更新：${new Date(item.marketTime).toLocaleString("zh-TW")}` : ""}">${toFixed(item.price, 2)}</td>
           <td title="來源：${item.marketDataSource}">${Math.round(item.volume).toLocaleString("zh-TW")}</td>
           <td>${toFixed(item.ma5, 2)}</td>
           <td>${toFixed(item.ma20, 2)}</td>
