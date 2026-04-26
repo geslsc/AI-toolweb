@@ -300,12 +300,12 @@
   <script>
     const STOCK_SUFFIXES = [".TW", ".TWO"];
     const API_BASE = "";
-    const FUNDAMENTALS_FALLBACK = {
-      "2330": { name: "台積電", eps4q: [8.71, 9.10, 9.45, 9.88], per: 22.1 },
-      "2317": { name: "鴻海", eps4q: [2.63, 2.81, 2.99, 3.12], per: 13.9 },
-      "2603": { name: "長榮", eps4q: [10.11, 9.72, 9.21, 8.66], per: 7.8 },
-      "0050": { name: "元大台灣50", eps4q: [2.71, 2.79, 2.85, 2.93], per: 17.5 },
-      "3008": { name: "大立光", eps4q: [34.2, 32.5, 31.8, 30.1], per: 28.8 }
+    const STOCK_NAME_MAP = {
+      "2330": "台積電",
+      "2317": "鴻海",
+      "2603": "長榮",
+      "0050": "元大台灣50",
+      "3008": "大立光"
     };
 
     const resultBody = document.getElementById("resultBody");
@@ -334,9 +334,9 @@
       const isWeekday = day >= 1 && day <= 5;
       const isTradingTime = current >= 9 * 60 && current <= 13 * 60 + 30;
       if (isWeekday && isTradingTime) {
-        return "目前為盤中時段，優先顯示即時成交資料。";
+        return "目前為盤中時段，顯示最近交易資料（以收盤序列為基準）。";
       }
-      return "目前為休市時段，顯示最近一筆可得資料（非逐筆即時）。";
+      return "目前為休市時段，顯示最近交易日收盤資料。";
     }
 
     function appendTs(url) {
@@ -378,7 +378,7 @@
     }
 
     function calcRSI(closes, period = 14) {
-      if (closes.length <= period) return 50;
+      if (!Array.isArray(closes) || closes.length <= period) return null;
       let gains = 0;
       let losses = 0;
       for (let i = closes.length - period; i < closes.length; i += 1) {
@@ -392,8 +392,8 @@
     }
 
     function calcMACD(closes) {
-      if (closes.length < 26) {
-        return { macd: 0, signal: 0, prevMacd: 0, prevSignal: 0 };
+      if (!Array.isArray(closes) || closes.length < 26) {
+        return { macd: null, signal: null, prevMacd: null, prevSignal: null };
       }
       const ema12 = calcEMA(closes, 12);
       const ema26 = calcEMA(closes, 26);
@@ -409,6 +409,7 @@
     }
 
     function volumeExpanded(volumes) {
+      if (!Array.isArray(volumes) || volumes.length < 6) return null;
       const today = volumes[volumes.length - 1] || 0;
       const avg5 = average(volumes.slice(-6, -1));
       return avg5 > 0 && today > avg5 * 1.3;
@@ -421,27 +422,41 @@
     }
 
     function scoreStock(metrics) {
-      const rsiGood = metrics.rsi < 30;
-      const breakout20 = metrics.price > metrics.ma20 && metrics.prevClose <= metrics.ma20;
-      const macdFlipPositive = metrics.macd > 0 && metrics.prevMacd <= 0;
+      const rsiGood = Number.isFinite(metrics.rsi) ? metrics.rsi < 30 : null;
+      const breakout20 = Number.isFinite(metrics.price) && Number.isFinite(metrics.ma20) && Number.isFinite(metrics.prevClose)
+        ? metrics.price > metrics.ma20 && metrics.prevClose <= metrics.ma20
+        : null;
+      const macdFlipPositive = Number.isFinite(metrics.macd) && Number.isFinite(metrics.prevMacd)
+        ? metrics.macd > 0 && metrics.prevMacd <= 0
+        : null;
       const epsAvailable = metrics.epsGrowth !== null;
       const perAvailable = Number.isFinite(metrics.per);
-      const epsGood = epsAvailable ? metrics.epsGrowth : null;
+      const epsGood = epsAvailable ? Boolean(metrics.epsGrowth) : null;
       const perGood = perAvailable ? metrics.per <= 20 : null;
       const volumeGood = metrics.volumeExpanded;
-      const technical = ((rsiGood ? 1 : 0) + (breakout20 ? 1 : 0) + (macdFlipPositive ? 1 : 0)) / 3 * 60;
+
+      const technicalParts = [];
+      if (rsiGood !== null) technicalParts.push(rsiGood ? 20 : 0);
+      if (breakout20 !== null) technicalParts.push(breakout20 ? 20 : 0);
+      if (macdFlipPositive !== null) technicalParts.push(macdFlipPositive ? 20 : 0);
+      const technical = technicalParts.reduce((sum, v) => sum + v, 0);
+      const technicalMax = technicalParts.length * 20;
+
       const fundamentalParts = [];
       if (epsAvailable) fundamentalParts.push(epsGood ? 10 : 0);
       if (perAvailable) fundamentalParts.push(perGood ? 10 : 0);
       const fundamental = fundamentalParts.reduce((sum, v) => sum + v, 0);
       const fundamentalMax = fundamentalParts.length * 10;
-      const chips = (volumeGood ? 1 : 0) * 20;
+
+      const chips = volumeGood === null ? 0 : (volumeGood ? 20 : 0);
+      const chipsMax = volumeGood === null ? 0 : 20;
       const rawScore = technical + fundamental + chips;
-      const maxScore = 60 + 20 + fundamentalMax;
-      const total = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : 0;
+      const maxScore = technicalMax + chipsMax + fundamentalMax;
+      const total = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : null;
 
       let advice = "避開";
-      if (total >= 70) advice = "買進";
+      if (total === null) advice = "N/A";
+      else if (total >= 70) advice = "買進";
       else if (total >= 45) advice = "觀察";
       return {
         total,
@@ -451,11 +466,12 @@
         macdFlipPositive,
         epsAvailable,
         perAvailable,
-        shortTermReady: rsiGood && breakout20 && macdFlipPositive
+        shortTermReady: rsiGood === true && breakout20 === true && macdFlipPositive === true
       };
     }
 
     function scoreClass(score) {
+      if (!Number.isFinite(score)) return "";
       if (score >= 70) return "score-high";
       if (score >= 45) return "score-mid";
       return "score-low";
@@ -464,6 +480,7 @@
     function adviceTagClass(advice) {
       if (advice === "買進") return "tag tag-buy";
       if (advice === "觀察") return "tag tag-watch";
+      if (advice === "N/A") return "tag";
       return "tag tag-avoid";
     }
 
@@ -471,87 +488,32 @@
       return Number(num).toFixed(digits);
     }
 
+    function formatNumberOrNA(value, digits = 2) {
+      return Number.isFinite(value) ? toFixed(value, digits) : "N/A";
+    }
+
+    function formatIntegerOrNA(value) {
+      return Number.isFinite(value) ? Math.round(value).toLocaleString("zh-TW") : "N/A";
+    }
+
     function parseCodes(raw) {
       return raw.split(",").map((code) => code.trim()).filter(Boolean);
+    }
+
+    function isValidTwCode(code) {
+      return /^\d{4}$/.test(code);
     }
 
     function getYahooSymbols(code) {
       return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
     }
 
-    async function fetchTwseRealtimeQuote(code) {
-      const url = `${API_BASE}/api/twse-realtime?code=${encodeURIComponent(code)}`;
-      const response = await fetchNoCache(url);
-      if (!response.ok) throw new Error(`TWSE 即時 HTTP ${response.status}`);
-      const payload = await response.json();
-      const price = Number(payload?.price);
-      const volume = Number(payload?.volume);
-      const marketTime = Number(payload?.marketTime);
-      if (!Number.isFinite(price) || price <= 0) throw new Error("TWSE 即時價格無效");
-      return {
-        price,
-        volume: Number.isFinite(volume) && volume > 0 ? volume : null,
-        marketTime: Number.isFinite(marketTime) ? marketTime : null
-      };
-    }
-
-    function buildMockSeries(basePrice, points = 80) {
-      const closes = [];
-      const volumes = [];
-      let price = basePrice;
-      for (let i = 0; i < points; i += 1) {
-        const drift = (Math.sin(i / 6) + Math.cos(i / 9)) * 0.003;
-        const noise = ((i % 7) - 3) * 0.0008;
-        price = Math.max(5, price * (1 + drift + noise));
-        closes.push(Number(price.toFixed(2)));
-        const volBase = 12000 + (i % 11) * 900;
-        volumes.push(Math.round(volBase * (1 + Math.abs(drift) * 8)));
-      }
-      volumes[volumes.length - 1] = Math.round(average(volumes.slice(-6, -1)) * 1.5);
-      return { closes, volumes };
-    }
-
-    function buildLocalMarketFallback(code) {
-      const fallback = FUNDAMENTALS_FALLBACK[code];
-      const basePriceMap = {
-        "2330": 950,
-        "2317": 120,
-        "2603": 130,
-        "0050": 152,
-        "3008": 2200
-      };
-      const basePrice = basePriceMap[code] || 100;
-      const series = buildMockSeries(basePrice, 90);
-      return {
-        code,
-        name: fallback?.name || code,
-        source: "LocalMock",
-        priceHistory: series.closes,
-        volumeHistory: series.volumes,
-        price: series.closes[series.closes.length - 1],
-        volume: series.volumes[series.volumes.length - 1],
-        localMock: true
-      };
-    }
-
     async function fetchYahooData(code) {
       const symbols = getYahooSymbols(code);
       let lastError = "Yahoo 無可用資料";
-      let twseRealtime = null;
-
-      try {
-        twseRealtime = await fetchTwseRealtimeQuote(code);
-      } catch (_error) {
-        twseRealtime = null;
-      }
 
       for (const symbol of symbols) {
         try {
-          const quoteUrl = `${API_BASE}/api/yahoo-quote?symbols=${encodeURIComponent(symbol)}`;
-          const quoteRes = await fetchNoCache(quoteUrl);
-          const quotePayload = quoteRes.ok ? await quoteRes.json() : null;
-          const quoteItem = quotePayload?.quoteResponse?.result?.[0];
-
           const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
           const response = await fetchNoCache(url);
           if (!response.ok) {
@@ -559,27 +521,27 @@
             continue;
           }
           const payload = await response.json();
+          console.log("[Yahoo Chart]", symbol, payload);
           const result = payload?.chart?.result?.[0];
           const quote = result?.indicators?.quote?.[0];
           const closesRaw = quote?.close || [];
           const volumesRaw = quote?.volume || [];
           const closes = closesRaw.filter((x) => Number.isFinite(x));
           const volumes = volumesRaw.filter((x) => Number.isFinite(x));
-
-          if (closes.length < 30 || volumes.length < 30) {
-            lastError = "Yahoo 資料長度不足";
+          if (closes.length === 0 && volumes.length === 0) {
+            lastError = "Yahoo 無有效價量資料";
             continue;
           }
 
           return {
             code,
-            name: result?.meta?.longName || result?.meta?.shortName || FUNDAMENTALS_FALLBACK[code]?.name || code,
-            source: twseRealtime ? "TWSE-Realtime+Yahoo" : "Yahoo",
+            name: result?.meta?.longName || result?.meta?.shortName || STOCK_NAME_MAP[code] || code,
+            source: "YahooClose",
             priceHistory: closes,
             volumeHistory: volumes,
-            price: twseRealtime?.price ?? quoteItem?.regularMarketPrice ?? result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
-            volume: twseRealtime?.volume ?? quoteItem?.regularMarketVolume ?? result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1],
-            marketTime: twseRealtime?.marketTime ?? (quoteItem?.regularMarketTime ? quoteItem.regularMarketTime * 1000 : null)
+            price: closes.length ? closes[closes.length - 1] : null,
+            volume: volumes.length ? volumes[volumes.length - 1] : null,
+            marketTime: null
           };
         } catch (error) {
           lastError = String(error.message || error);
@@ -610,6 +572,7 @@
         const response = await fetchNoCache(url);
         if (!response.ok) continue;
         const payload = await response.json();
+        console.log("[TWSE STOCK_DAY]", code, monthKey, payload);
         if (!Array.isArray(payload?.data)) continue;
         allRows.push(...payload.data);
       }
@@ -621,14 +584,14 @@
         }))
         .filter((row) => Number.isFinite(row.close) && Number.isFinite(row.volume));
 
-      if (parsed.length < 30) throw new Error("TWSE 資料不足");
+      if (parsed.length < 1) throw new Error("TWSE 資料不足");
 
       const closes = parsed.map((row) => row.close);
       const volumes = parsed.map((row) => row.volume);
 
       return {
         code,
-        name: FUNDAMENTALS_FALLBACK[code]?.name || code,
+        name: STOCK_NAME_MAP[code] || code,
         source: "TWSE",
         priceHistory: closes,
         volumeHistory: volumes,
@@ -651,6 +614,7 @@
           }
 
           const payload = await response.json();
+          console.log("[Yahoo Fundamentals]", symbol, payload);
           const result = payload?.quoteSummary?.result?.[0];
           if (!result) {
             lastError = "Yahoo Fundamentals 無資料";
@@ -665,25 +629,18 @@
             .filter((v) => Number.isFinite(v))
             .slice(-4);
 
-          let eps4q = eps4qFromQuarterly;
-          if (eps4q.length < 4 && Number.isFinite(trailingEps)) {
-            const avgQ = trailingEps / 4;
-            eps4q = [avgQ, avgQ, avgQ, avgQ];
-          }
+          const eps4q = eps4qFromQuarterly.length === 4 ? eps4qFromQuarterly : null;
 
-          if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && eps4q.length < 4) {
+          if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && !eps4q) {
             lastError = "Yahoo Fundamentals 欄位不足";
             continue;
           }
 
           let per = Number.isFinite(trailingPe) ? trailingPe : null;
-          if (!Number.isFinite(per) && Number.isFinite(trailingEps) && trailingEps > 0) {
-            const latestPrice = result?.financialData?.currentPrice?.raw;
-            if (Number.isFinite(latestPrice)) per = latestPrice / trailingEps;
-          }
+          if (!Number.isFinite(per)) per = null;
 
           return {
-            eps4q: eps4q.length === 4 ? eps4q : null,
+            eps4q,
             per: Number.isFinite(per) ? per : null,
             source: "Yahoo"
           };
@@ -710,6 +667,7 @@
       if (!response.ok) throw new Error(`TWSE PER HTTP ${response.status}`);
 
       const payload = await response.json();
+      console.log("[TWSE PER]", code, payload);
       if (!Array.isArray(payload?.fields) || !Array.isArray(payload?.data) || payload.data.length < 1) {
         throw new Error("TWSE PER 無資料");
       }
@@ -724,8 +682,8 @@
       return { per, source: "TWSE" };
     }
 
-    async function getFundamentals(code, latestPrice) {
-      const local = FUNDAMENTALS_FALLBACK[code] || { name: code, eps4q: null, per: null };
+    async function getFundamentals(code) {
+      const local = { name: STOCK_NAME_MAP[code] || code };
       try {
         const yahoo = await fetchYahooFundamentals(code);
         return {
@@ -739,15 +697,9 @@
       } catch (yahooError) {
         try {
           const twsePer = await fetchTwsePer(code);
-          let eps4q = null;
-          if (Number.isFinite(latestPrice) && twsePer.per > 0) {
-            const trailingEps = latestPrice / twsePer.per;
-            const q = trailingEps / 4;
-            eps4q = [q, q, q, q];
-          }
           return {
             name: local.name,
-            eps4q,
+            eps4q: null,
             per: twsePer.per,
             source: twsePer.source,
             usedFallback: true,
@@ -756,12 +708,12 @@
         } catch (twseError) {
           return {
             name: local.name,
-            eps4q: Array.isArray(local.eps4q) && local.eps4q.length === 4 ? local.eps4q : null,
-            per: Number.isFinite(local.per) ? local.per : null,
-            source: "LocalRef",
+            eps4q: null,
+            per: null,
+            source: "N/A",
             usedFallback: true,
             scoreable: false,
-            warning: `基本面即時資料失敗（${yahooError.message} / ${twseError.message}），已改用參考值且不計分`
+            warning: `基本面資料取得失敗（${yahooError.message} / ${twseError.message}），不列入評分`
           };
         }
       }
@@ -777,11 +729,10 @@
           return { ok: true, data: twse, fallbackUsed: true };
         } catch (twseError) {
           return {
-            ok: true,
-            data: buildLocalMarketFallback(code),
-            fallbackUsed: true,
-            localMockUsed: true,
-            error: `Yahoo 與 TWSE 都失敗（${yahooError.message} / ${twseError.message}）`
+            ok: false,
+            code,
+            fallbackUsed: false,
+            error: "資料取得失敗，請確認股票代碼或稍後再試"
           };
         }
       }
@@ -790,12 +741,12 @@
     async function buildAnalysis(stockData) {
       const closes = stockData.priceHistory;
       const volumes = stockData.volumeHistory;
-      const ma5 = average(closes.slice(-5));
-      const ma20 = average(closes.slice(-20));
+      const ma5 = closes.length >= 5 ? average(closes.slice(-5)) : null;
+      const ma20 = closes.length >= 20 ? average(closes.slice(-20)) : null;
       const rsi = calcRSI(closes, 14);
       const macdData = calcMACD(closes);
       const volumeIsExpanded = volumeExpanded(volumes);
-      const fundamental = await getFundamentals(stockData.code, stockData.price);
+      const fundamental = await getFundamentals(stockData.code);
       const epsGrowth = epsGrowing(fundamental.eps4q);
 
       const metrics = {
@@ -827,10 +778,10 @@
         fundamentalScoreable: fundamental.scoreable !== false,
         marketDataSource: stockData.source,
         marketTime: stockData.marketTime || null,
-        marketDataWarning: stockData.localMock ? "即時行情暫不可用，已改用示意資料" : "",
-        entryPrice: stockData.price,
-        stopLossPrice: stockData.price * 0.95,
-        targetPrice: stockData.price * 1.10,
+        marketDataWarning: "",
+        entryPrice: Number.isFinite(stockData.price) ? stockData.price : null,
+        stopLossPrice: Number.isFinite(stockData.price) ? stockData.price * 0.95 : null,
+        targetPrice: Number.isFinite(stockData.price) ? stockData.price * 1.10 : null,
         volumeIsExpanded,
         scored
       };
@@ -838,9 +789,11 @@
 
     function getSignalText(scored) {
       const signals = [];
-      if (scored.rsiGood) signals.push("RSI<30");
-      if (scored.macdFlipPositive) signals.push("MACD翻正");
-      if (scored.breakout20) signals.push("突破20MA");
+      if (scored.rsiGood === true) signals.push("RSI<30");
+      if (scored.macdFlipPositive === true) signals.push("MACD翻正");
+      if (scored.breakout20 === true) signals.push("突破20MA");
+      const hasAnySignalData = scored.rsiGood !== null || scored.macdFlipPositive !== null || scored.breakout20 !== null;
+      if (!hasAnySignalData) return "N/A";
       return signals.length ? signals.join(" + ") : "-";
     }
 
@@ -858,23 +811,26 @@
 
       analysisList.forEach((item) => {
         const row = document.createElement("tr");
+        const strengthText = Number.isFinite(item.scored.total)
+          ? (item.scored.total >= 70 ? "偏強" : "偏弱")
+          : "N/A";
         row.innerHTML = `
           <td>${item.code}</td>
           <td>${item.name}</td>
-          <td title="來源：${item.marketDataSource}${item.marketTime ? `，更新：${new Date(item.marketTime).toLocaleString("zh-TW")}` : ""}">${toFixed(item.price, 2)}</td>
-          <td title="來源：${item.marketDataSource}">${Math.round(item.volume).toLocaleString("zh-TW")}</td>
-          <td>${toFixed(item.ma5, 2)}</td>
-          <td>${toFixed(item.ma20, 2)}</td>
-          <td class="${item.rsi < 30 ? "up" : ""}">${toFixed(item.rsi, 1)}</td>
-          <td>${toFixed(item.macdData.macd, 3)} / ${toFixed(item.macdData.signal, 3)}</td>
+          <td title="來源：${item.marketDataSource}${item.marketTime ? `，更新：${new Date(item.marketTime).toLocaleString("zh-TW")}` : ""}">${formatNumberOrNA(item.price, 2)}</td>
+          <td title="來源：${item.marketDataSource}">${formatIntegerOrNA(item.volume)}</td>
+          <td>${formatNumberOrNA(item.ma5, 2)}</td>
+          <td>${formatNumberOrNA(item.ma20, 2)}</td>
+          <td class="${Number.isFinite(item.rsi) && item.rsi < 30 ? "up" : ""}">${formatNumberOrNA(item.rsi, 1)}</td>
+          <td>${Number.isFinite(item.macdData.macd) && Number.isFinite(item.macdData.signal) ? `${toFixed(item.macdData.macd, 3)} / ${toFixed(item.macdData.signal, 3)}` : "N/A"}</td>
           <td>${getSignalText(item.scored)}</td>
           <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${formatEps4q(item.eps4q)}</td>
           <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${Number.isFinite(item.per) ? toFixed(item.per, 1) : "N/A"}</td>
-          <td>${toFixed(item.entryPrice, 2)}</td>
-          <td class="down">${toFixed(item.stopLossPrice, 2)}</td>
-          <td class="up">${toFixed(item.targetPrice, 2)}</td>
-          <td class="${item.scored.total >= 70 ? "trend-strong" : "trend-weak"}">${item.scored.total >= 70 ? "偏強" : "偏弱"}</td>
-          <td class="${scoreClass(item.scored.total)}">${item.scored.total}</td>
+          <td>${formatNumberOrNA(item.entryPrice, 2)}</td>
+          <td class="down">${formatNumberOrNA(item.stopLossPrice, 2)}</td>
+          <td class="up">${formatNumberOrNA(item.targetPrice, 2)}</td>
+          <td class="${Number.isFinite(item.scored.total) && item.scored.total >= 70 ? "trend-strong" : "trend-weak"}">${strengthText}</td>
+          <td class="${scoreClass(item.scored.total)}">${Number.isFinite(item.scored.total) ? item.scored.total : "N/A"}</td>
           <td><span class="${adviceTagClass(item.scored.advice)}">${item.scored.advice}</span></td>
         `;
         resultBody.appendChild(row);
@@ -916,6 +872,23 @@
         return;
       }
 
+      const invalidCodes = codes.filter((code) => !isValidTwCode(code));
+      if (invalidCodes.length > 0) {
+        resultBody.innerHTML = "";
+        recommendList.innerHTML = "";
+        emptyRecommend.hidden = false;
+        invalidCodes.forEach((code) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${code}</td>
+            <td colspan="16" style="color:#b91c1c;">股票代碼格式錯誤</td>
+          `;
+          resultBody.appendChild(row);
+        });
+        showStatus("股票代碼格式錯誤", "error");
+        return;
+      }
+
       analyzeBtn.disabled = true;
       showStatus("正在抓取即時資料，請稍候...", "info");
 
@@ -927,7 +900,6 @@
       latestAnalysisList = successList;
       latestFailList = failList;
       const fallbackCount = jobs.filter((item) => item.ok && item.fallbackUsed).length;
-      const mockCount = jobs.filter((item) => item.localMockUsed).length;
       renderRows(successList, failList);
       const fundamentalWarnCount = successList.filter((x) => x.fundamentalWarning).length;
 
@@ -940,8 +912,6 @@
         );
       } else if (fundamentalWarnCount > 0) {
         showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。${getMarketSessionHint()}`, "warn");
-      } else if (mockCount > 0) {
-        showStatus(`已完成 ${successList.length} 檔，其中 ${mockCount} 檔行情改用示意資料（即時來源暫時不可用）。${getMarketSessionHint()}`, "warn");
       } else if (fallbackCount > 0) {
         showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。${getMarketSessionHint()}`, "info");
       } else {
