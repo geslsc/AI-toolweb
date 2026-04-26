@@ -325,6 +325,34 @@
       statusBox.className = `status ${type}`;
     }
 
+    function getMarketSessionHint() {
+      const now = new Date();
+      const day = now.getDay();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const current = hour * 60 + minute;
+      const isWeekday = day >= 1 && day <= 5;
+      const isTradingTime = current >= 9 * 60 && current <= 13 * 60 + 30;
+      if (isWeekday && isTradingTime) {
+        return "目前為盤中時段，優先顯示即時成交資料。";
+      }
+      return "目前為休市時段，顯示最近一筆可得資料（非逐筆即時）。";
+    }
+
+    function appendTs(url) {
+      const sep = url.includes("?") ? "&" : "?";
+      return `${url}${sep}_ts=${Date.now()}`;
+    }
+
+    async function fetchNoCache(url) {
+      return fetch(appendTs(url), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache"
+        }
+      });
+    }
+
     function parseNumber(input) {
       if (input === null || input === undefined) return null;
       const cleaned = String(input).replaceAll(",", "").trim();
@@ -453,7 +481,7 @@
 
     async function fetchTwseRealtimeQuote(code) {
       const url = `${API_BASE}/api/twse-realtime?code=${encodeURIComponent(code)}`;
-      const response = await fetch(url);
+      const response = await fetchNoCache(url);
       if (!response.ok) throw new Error(`TWSE 即時 HTTP ${response.status}`);
       const payload = await response.json();
       const price = Number(payload?.price);
@@ -520,12 +548,12 @@
       for (const symbol of symbols) {
         try {
           const quoteUrl = `${API_BASE}/api/yahoo-quote?symbols=${encodeURIComponent(symbol)}`;
-          const quoteRes = await fetch(quoteUrl);
+          const quoteRes = await fetchNoCache(quoteUrl);
           const quotePayload = quoteRes.ok ? await quoteRes.json() : null;
           const quoteItem = quotePayload?.quoteResponse?.result?.[0];
 
           const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
-          const response = await fetch(url);
+          const response = await fetchNoCache(url);
           if (!response.ok) {
             lastError = `Yahoo HTTP ${response.status}`;
             continue;
@@ -579,7 +607,7 @@
 
       for (const monthKey of monthKeys) {
         const url = `${API_BASE}/api/twse-stock-day?date=${monthKey}&stockNo=${encodeURIComponent(code)}`;
-        const response = await fetch(url);
+        const response = await fetchNoCache(url);
         if (!response.ok) continue;
         const payload = await response.json();
         if (!Array.isArray(payload?.data)) continue;
@@ -616,7 +644,7 @@
       for (const symbol of symbols) {
         try {
           const url = `${API_BASE}/api/yahoo-fundamentals?symbol=${encodeURIComponent(symbol)}`;
-          const response = await fetch(url);
+          const response = await fetchNoCache(url);
           if (!response.ok) {
             lastError = `Yahoo Fundamentals HTTP ${response.status}`;
             continue;
@@ -678,7 +706,7 @@
     async function fetchTwsePer(code) {
       const date = getRecentBusinessDateString();
       const url = `${API_BASE}/api/twse-per?date=${date}&stockNo=${encodeURIComponent(code)}`;
-      const response = await fetch(url);
+      const response = await fetchNoCache(url);
       if (!response.ok) throw new Error(`TWSE PER HTTP ${response.status}`);
 
       const payload = await response.json();
@@ -907,17 +935,17 @@
         showStatus("所有股票都抓取失敗，請稍後再試或確認網路連線。", "error");
       } else if (failList.length) {
         showStatus(
-          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。股價備援 ${fallbackCount} 檔；基本面降級 ${fundamentalWarnCount} 檔。`,
+          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。股價備援 ${fallbackCount} 檔；基本面降級 ${fundamentalWarnCount} 檔。${getMarketSessionHint()}`,
           "warn"
         );
       } else if (fundamentalWarnCount > 0) {
-        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。`, "warn");
+        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。${getMarketSessionHint()}`, "warn");
       } else if (mockCount > 0) {
-        showStatus(`已完成 ${successList.length} 檔，其中 ${mockCount} 檔行情改用示意資料（即時來源暫時不可用）。`, "warn");
+        showStatus(`已完成 ${successList.length} 檔，其中 ${mockCount} 檔行情改用示意資料（即時來源暫時不可用）。${getMarketSessionHint()}`, "warn");
       } else if (fallbackCount > 0) {
-        showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。`, "info");
+        showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。${getMarketSessionHint()}`, "info");
       } else {
-        showStatus(`全部完成，共 ${successList.length} 檔，資料來源 Yahoo。`, "info");
+        showStatus(`全部完成，共 ${successList.length} 檔。${getMarketSessionHint()}`, "info");
       }
 
       analyzeBtn.disabled = false;
