@@ -387,6 +387,8 @@
     }
 
     function epsGrowing(eps4q) {
+      if (!Array.isArray(eps4q) || eps4q.length !== 4) return null;
+      if (!eps4q.every((v) => Number.isFinite(v))) return null;
       return eps4q[3] > eps4q[0];
     }
 
@@ -394,13 +396,21 @@
       const rsiGood = metrics.rsi < 30;
       const breakout20 = metrics.price > metrics.ma20 && metrics.prevClose <= metrics.ma20;
       const macdFlipPositive = metrics.macd > 0 && metrics.prevMacd <= 0;
-      const epsGood = metrics.epsGrowth;
-      const perGood = metrics.per <= 20;
+      const epsAvailable = metrics.epsGrowth !== null;
+      const perAvailable = Number.isFinite(metrics.per);
+      const epsGood = epsAvailable ? metrics.epsGrowth : null;
+      const perGood = perAvailable ? metrics.per <= 20 : null;
       const volumeGood = metrics.volumeExpanded;
       const technical = ((rsiGood ? 1 : 0) + (breakout20 ? 1 : 0) + (macdFlipPositive ? 1 : 0)) / 3 * 60;
-      const fundamental = ((epsGood ? 1 : 0) + (perGood ? 1 : 0)) / 2 * 20;
+      const fundamentalParts = [];
+      if (epsAvailable) fundamentalParts.push(epsGood ? 10 : 0);
+      if (perAvailable) fundamentalParts.push(perGood ? 10 : 0);
+      const fundamental = fundamentalParts.reduce((sum, v) => sum + v, 0);
+      const fundamentalMax = fundamentalParts.length * 10;
       const chips = (volumeGood ? 1 : 0) * 20;
-      const total = Math.round(technical + fundamental + chips);
+      const rawScore = technical + fundamental + chips;
+      const maxScore = 60 + 20 + fundamentalMax;
+      const total = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : 0;
 
       let advice = "避開";
       if (total >= 70) advice = "買進";
@@ -411,6 +421,8 @@
         rsiGood,
         breakout20,
         macdFlipPositive,
+        epsAvailable,
+        perAvailable,
         shortTermReady: rsiGood && breakout20 && macdFlipPositive
       };
     }
@@ -437,6 +449,22 @@
 
     function getYahooSymbols(code) {
       return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
+    }
+
+    async function fetchTwseRealtimeQuote(code) {
+      const url = `${API_BASE}/api/twse-realtime?code=${encodeURIComponent(code)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`TWSE 即時 HTTP ${response.status}`);
+      const payload = await response.json();
+      const price = Number(payload?.price);
+      const volume = Number(payload?.volume);
+      const marketTime = Number(payload?.marketTime);
+      if (!Number.isFinite(price) || price <= 0) throw new Error("TWSE 即時價格無效");
+      return {
+        price,
+        volume: Number.isFinite(volume) && volume > 0 ? volume : null,
+        marketTime: Number.isFinite(marketTime) ? marketTime : null
+      };
     }
 
     function buildMockSeries(basePrice, points = 80) {
@@ -481,6 +509,13 @@
     async function fetchYahooData(code) {
       const symbols = getYahooSymbols(code);
       let lastError = "Yahoo 無可用資料";
+      let twseRealtime = null;
+
+      try {
+        twseRealtime = await fetchTwseRealtimeQuote(code);
+      } catch (_error) {
+        twseRealtime = null;
+      }
 
       for (const symbol of symbols) {
         try {
@@ -511,12 +546,12 @@
           return {
             code,
             name: result?.meta?.longName || result?.meta?.shortName || FUNDAMENTALS_FALLBACK[code]?.name || code,
-            source: "Yahoo",
+            source: twseRealtime ? "TWSE-Realtime+Yahoo" : "Yahoo",
             priceHistory: closes,
             volumeHistory: volumes,
-            price: quoteItem?.regularMarketPrice ?? result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
-            volume: quoteItem?.regularMarketVolume ?? result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1],
-            marketTime: quoteItem?.regularMarketTime ? quoteItem.regularMarketTime * 1000 : null
+            price: twseRealtime?.price ?? quoteItem?.regularMarketPrice ?? result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
+            volume: twseRealtime?.volume ?? quoteItem?.regularMarketVolume ?? result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1],
+            marketTime: twseRealtime?.marketTime ?? (quoteItem?.regularMarketTime ? quoteItem.regularMarketTime * 1000 : null)
           };
         } catch (error) {
           lastError = String(error.message || error);
@@ -662,21 +697,22 @@
     }
 
     async function getFundamentals(code, latestPrice) {
-      const local = FUNDAMENTALS_FALLBACK[code] || { name: code, eps4q: [0, 0, 0, 0], per: 999 };
+      const local = FUNDAMENTALS_FALLBACK[code] || { name: code, eps4q: null, per: null };
       try {
         const yahoo = await fetchYahooFundamentals(code);
         return {
           name: local.name,
-          eps4q: yahoo.eps4q || local.eps4q,
-          per: Number.isFinite(yahoo.per) ? yahoo.per : local.per,
+          eps4q: Array.isArray(yahoo.eps4q) && yahoo.eps4q.length === 4 ? yahoo.eps4q : null,
+          per: Number.isFinite(yahoo.per) ? yahoo.per : null,
           source: yahoo.source,
-          usedFallback: false
+          usedFallback: false,
+          scoreable: true
         };
       } catch (yahooError) {
         try {
           const twsePer = await fetchTwsePer(code);
-          let eps4q = local.eps4q;
-          if ((!eps4q || eps4q.length !== 4 || eps4q.every((v) => v === 0)) && Number.isFinite(latestPrice) && twsePer.per > 0) {
+          let eps4q = null;
+          if (Number.isFinite(latestPrice) && twsePer.per > 0) {
             const trailingEps = latestPrice / twsePer.per;
             const q = trailingEps / 4;
             eps4q = [q, q, q, q];
@@ -686,16 +722,18 @@
             eps4q,
             per: twsePer.per,
             source: twsePer.source,
-            usedFallback: true
+            usedFallback: true,
+            scoreable: true
           };
         } catch (twseError) {
           return {
             name: local.name,
-            eps4q: local.eps4q,
-            per: local.per,
-            source: "Local",
+            eps4q: Array.isArray(local.eps4q) && local.eps4q.length === 4 ? local.eps4q : null,
+            per: Number.isFinite(local.per) ? local.per : null,
+            source: "LocalRef",
             usedFallback: true,
-            warning: `基本面即時資料失敗（${yahooError.message} / ${twseError.message}）`
+            scoreable: false,
+            warning: `基本面即時資料失敗（${yahooError.message} / ${twseError.message}），已改用參考值且不計分`
           };
         }
       }
@@ -758,6 +796,7 @@
         per: fundamental.per,
         fundamentalSource: fundamental.source,
         fundamentalWarning: fundamental.warning || "",
+        fundamentalScoreable: fundamental.scoreable !== false,
         marketDataSource: stockData.source,
         marketTime: stockData.marketTime || null,
         marketDataWarning: stockData.localMock ? "即時行情暫不可用，已改用示意資料" : "",
@@ -775,6 +814,12 @@
       if (scored.macdFlipPositive) signals.push("MACD翻正");
       if (scored.breakout20) signals.push("突破20MA");
       return signals.length ? signals.join(" + ") : "-";
+    }
+
+    function formatEps4q(eps4q) {
+      if (!Array.isArray(eps4q) || eps4q.length !== 4) return "N/A";
+      if (!eps4q.every((v) => Number.isFinite(v))) return "N/A";
+      return eps4q.map((v) => toFixed(v, 2)).join(" / ");
     }
 
     function renderRows(analysisList, failList) {
@@ -795,8 +840,8 @@
           <td class="${item.rsi < 30 ? "up" : ""}">${toFixed(item.rsi, 1)}</td>
           <td>${toFixed(item.macdData.macd, 3)} / ${toFixed(item.macdData.signal, 3)}</td>
           <td>${getSignalText(item.scored)}</td>
-          <td title="來源：${item.fundamentalSource}">${item.eps4q.map((v) => toFixed(v, 2)).join(" / ")}</td>
-          <td title="來源：${item.fundamentalSource}">${toFixed(item.per, 1)}</td>
+          <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${formatEps4q(item.eps4q)}</td>
+          <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${Number.isFinite(item.per) ? toFixed(item.per, 1) : "N/A"}</td>
           <td>${toFixed(item.entryPrice, 2)}</td>
           <td class="down">${toFixed(item.stopLossPrice, 2)}</td>
           <td class="up">${toFixed(item.targetPrice, 2)}</td>
