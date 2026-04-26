@@ -3,251 +3,84 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台股新手選股工具（即時版）</title>
+  <title>台股選股工具（前端 + 本機後端）</title>
   <style>
     :root {
-      --bg: #f3f6fb;
+      --bg: #f4f7fb;
       --card: #ffffff;
+      --line: #d9e1ec;
       --text: #1f2937;
-      --subtext: #6b7280;
-      --line: #dbe2ea;
-      --primary: #2563eb;
-      --good: #dc2626;
-      --bad: #16a34a;
-      --warn: #ea580c;
+      --sub: #6b7280;
+      --blue: #2563eb;
+      --red: #dc2626;
+      --green: #16a34a;
+      --orange: #ea580c;
     }
-
-    * {
-      box-sizing: border-box;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
-        "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-    }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      padding: 22px;
-    }
-
-    .container {
-      max-width: 1150px;
-      margin: 0 auto;
-      display: grid;
-      gap: 16px;
-    }
-
-    .card {
-      background: var(--card);
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 20px; }
+    .wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; }
+    .hint { margin: 0; color: var(--sub); font-size: 0.92rem; line-height: 1.5; }
+    .controls { margin-top: 12px; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: end; }
+    label { display: block; color: var(--sub); font-size: 0.9rem; margin-bottom: 5px; }
+    input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 0.98rem; outline: none; }
+    input:focus { border-color: var(--blue); }
+    button { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 10px 14px; min-width: 100px; cursor: pointer; font-size: 0.95rem; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .status { margin-top: 10px; border-radius: 10px; border: 1px solid #c7d2fe; background: #eef2ff; color: #1d4ed8; padding: 10px 12px; font-size: 0.92rem; display: none; }
+    .status.warn { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+    .status.error { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .stock-item {
       border: 1px solid var(--line);
       border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
-    }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.4rem;
-    }
-
-    .hint {
-      margin: 0;
-      color: var(--subtext);
-      font-size: 0.93rem;
-      line-height: 1.5;
-    }
-
-    .controls {
+      padding: 12px;
+      background: #fff;
       display: grid;
-      grid-template-columns: 1fr auto auto auto;
-      gap: 10px;
-      align-items: end;
-      margin-top: 12px;
+      gap: 6px;
     }
-
-    label {
-      display: block;
-      color: var(--subtext);
-      font-size: 0.9rem;
-      margin-bottom: 5px;
-    }
-
-    input {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 0.98rem;
-      outline: none;
-    }
-
-    input:focus {
-      border-color: var(--primary);
-    }
-
-    button {
-      border: 1px solid var(--line);
-      background: #fff;
-      border-radius: 10px;
-      padding: 10px 14px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      min-width: 102px;
-    }
-
-    button.primary {
-      background: var(--primary);
-      color: #fff;
-      border-color: var(--primary);
-    }
-
-    button.secondary {
-      background: #fff7ed;
-      color: #9a3412;
-      border-color: #fdba74;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1360px;
-      background: #fff;
-    }
-
-    th, td {
-      border-bottom: 1px solid var(--line);
-      text-align: center;
-      padding: 10px 8px;
-      font-size: 0.92rem;
-      white-space: nowrap;
-    }
-
-    th {
-      background: #f8fafc;
-      font-weight: 700;
-    }
-
-    tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .up {
-      color: var(--good);
-      font-weight: 700;
-    }
-
-    .down {
-      color: var(--bad);
-      font-weight: 700;
-    }
-
-    .score-high {
-      color: var(--good);
-      font-weight: 700;
-    }
-
-    .score-mid {
-      color: var(--warn);
-      font-weight: 700;
-    }
-
-    .score-low {
-      color: var(--bad);
-      font-weight: 700;
-    }
-
-    .tag {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 3px 9px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .tag-buy { background: #dc2626; }
-    .tag-watch { background: #ea580c; }
-    .tag-avoid { background: #16a34a; }
-    .trend-strong { color: #dc2626; font-weight: 700; }
-    .trend-weak { color: #16a34a; font-weight: 700; }
-
-    .mini-note {
-      margin-top: 12px;
-      color: var(--subtext);
-      font-size: 0.9rem;
-      line-height: 1.6;
-    }
-
-    .recommend-list {
-      margin: 10px 0 0;
-      padding-left: 20px;
-      line-height: 1.7;
-    }
-
-    .empty {
-      color: var(--subtext);
-      padding: 10px 2px 2px;
-      font-size: 0.95rem;
-    }
-
-    .status {
-      margin-top: 10px;
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
-
-    .status.info {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      color: #1d4ed8;
-    }
-
-    .status.error {
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #b91c1c;
-    }
-
-    .status.warn {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
-      color: #c2410c;
-    }
-
-    @media (max-width: 840px) {
-      .controls {
-        grid-template-columns: 1fr;
-      }
-    }
+    .stock-head { display: flex; justify-content: space-between; align-items: center; }
+    .stock-code { font-size: 1rem; font-weight: 700; }
+    .stock-price { font-size: 1.25rem; font-weight: 700; color: var(--blue); }
+    .stock-meta { color: var(--sub); font-size: 0.88rem; }
+    .stock-row { display: flex; justify-content: space-between; font-size: 0.9rem; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; min-width: 1350px; border-collapse: collapse; background: #fff; }
+    th, td { text-align: center; padding: 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; font-size: 0.92rem; }
+    th { background: #f8fafc; font-weight: 700; }
+    tr:last-child td { border-bottom: 0; }
+    .up { color: var(--red); font-weight: 700; }
+    .down { color: var(--green); font-weight: 700; }
+    .tag { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 0.8rem; color: #fff; font-weight: 700; }
+    .tag-buy { background: var(--red); }
+    .tag-watch { background: var(--orange); }
+    .tag-avoid { background: var(--green); }
+    @media (max-width: 860px) { .controls { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="wrap">
     <section class="card">
-      <h1>台股新手選股工具（收盤價版）</h1>
+      <h1>台股選股工具（前端 + 本機後端）</h1>
       <p class="hint">
-        一次可輸入多檔股票代碼（逗號分隔），例如：2330, 2317, 0050。
-        <br>
-        股價資料來源：TWSE STOCK_DAY（最近交易日收盤）。分數為教學參考，不是投資建議。
+        輸入多檔股票代碼（逗號分隔），例如：2330, 2317, 2603, 0050。<br>
+        前端只呼叫本機 API：<code>http://localhost:3000/api/stock?code=2330</code>
       </p>
       <div class="controls">
         <div>
-          <label for="stockCodes">股票代碼（可多檔）</label>
-          <input id="stockCodes" type="text" value="2330, 2317, 2603, 0050, 3008">
+          <label for="codesInput">股票代碼（多檔）</label>
+          <input id="codesInput" type="text" value="2330, 2317, 2603, 0050">
         </div>
         <button id="analyzeBtn" class="primary" type="button">分析</button>
-        <button id="quickFilterBtn" class="secondary" type="button">一鍵篩選短線</button>
         <button id="clearBtn" type="button">清空</button>
       </div>
-      <div id="statusBox" class="status info" hidden></div>
+      <div id="statusBox" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 10px;font-size:1.08rem;">選股儀表板（卡片）</h2>
+      <div id="dashboardGrid" class="dashboard-grid"></div>
     </section>
 
     <section class="card">
@@ -258,650 +91,201 @@
               <th>代碼</th>
               <th>名稱</th>
               <th>資料日期</th>
-              <th>現價</th>
+              <th>收盤價</th>
               <th>成交量</th>
-              <th>5日MA</th>
-              <th>20日MA</th>
+              <th>MA5</th>
+              <th>MA20</th>
               <th>RSI</th>
               <th>MACD</th>
-              <th>短線訊號</th>
-              <th>EPS(近四季)</th>
-              <th>PER</th>
               <th>建議進場</th>
               <th>停損(-5%)</th>
               <th>目標(+10%)</th>
-              <th>強弱</th>
-              <th>分數</th>
               <th>建議</th>
             </tr>
           </thead>
           <tbody id="resultBody"></tbody>
         </table>
       </div>
-      <p class="mini-note">
-        指標小教室（超簡單版）：RSI 像「熱不熱」，太低可能被賣過頭；
-        MA 是平均線，價格在 20MA 上面代表近期比較強；
-        MACD 黃金交叉像短期動能轉強；
-        EPS 是公司賺錢能力，越成長通常越好；
-        PER 是市場願意給的倍數，太高可能代表偏貴；
-        成交量放大代表有更多人進場關注。
-      </p>
-    </section>
-
-    <section class="card">
-      <h2 style="margin:0;font-size:1.1rem;">推薦清單（短線 1~14 天）</h2>
-      <p class="hint" style="margin-top:8px;">
-        條件：RSI &lt; 30、MACD 剛翻正、突破 20MA
-      </p>
-      <ul id="recommendList" class="recommend-list"></ul>
-      <p id="emptyRecommend" class="empty" hidden>目前沒有符合條件的股票。</p>
     </section>
   </div>
 
   <script>
-    const STOCK_SUFFIXES = [".TW", ".TWO"];
-    const API_BASE = "";
-    const STOCK_NAME_MAP = {
-      "2330": "台積電",
-      "2317": "鴻海",
-      "2603": "長榮",
-      "0050": "元大台灣50",
-      "3008": "大立光"
-    };
-
     const resultBody = document.getElementById("resultBody");
-    const recommendList = document.getElementById("recommendList");
-    const emptyRecommend = document.getElementById("emptyRecommend");
-    const stockCodesInput = document.getElementById("stockCodes");
-    const analyzeBtn = document.getElementById("analyzeBtn");
-    const quickFilterBtn = document.getElementById("quickFilterBtn");
-    const clearBtn = document.getElementById("clearBtn");
     const statusBox = document.getElementById("statusBox");
-    let latestAnalysisList = [];
-    let latestFailList = [];
+    const dashboardGrid = document.getElementById("dashboardGrid");
+    const codesInput = document.getElementById("codesInput");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const clearBtn = document.getElementById("clearBtn");
 
     function showStatus(message, type = "info") {
-      statusBox.hidden = !message;
-      statusBox.textContent = message || "";
+      if (!message) {
+        statusBox.style.display = "none";
+        statusBox.textContent = "";
+        statusBox.className = "status";
+        return;
+      }
+      statusBox.style.display = "block";
+      statusBox.textContent = message;
       statusBox.className = `status ${type}`;
     }
 
-    function getMarketSessionHint() {
-      return "顯示台股最近交易日收盤資料（非盤中即時價）。";
-    }
-
-    function appendTs(url) {
-      const sep = url.includes("?") ? "&" : "?";
-      return `${url}${sep}_ts=${Date.now()}`;
-    }
-
-    async function fetchNoCache(url) {
-      return fetch(appendTs(url), {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache"
-        }
-      });
-    }
-
-    function parseNumber(input) {
-      if (input === null || input === undefined) return null;
-      const cleaned = String(input).replaceAll(",", "").trim();
-      if (cleaned === "--" || cleaned === "") return null;
-      const num = Number(cleaned);
-      return Number.isFinite(num) ? num : null;
-    }
-
-    function average(values) {
-      if (!values.length) return 0;
-      return values.reduce((sum, val) => sum + val, 0) / values.length;
-    }
-
-    function calcEMA(data, period) {
-      const k = 2 / (period + 1);
-      let ema = data[0] || 0;
-      const result = [ema];
-      for (let i = 1; i < data.length; i += 1) {
-        ema = data[i] * k + ema * (1 - k);
-        result.push(ema);
-      }
-      return result;
-    }
-
-    function calcRSI(closes, period = 14) {
-      if (!Array.isArray(closes) || closes.length <= period) return null;
-      let gains = 0;
-      let losses = 0;
-      for (let i = closes.length - period; i < closes.length; i += 1) {
-        const diff = closes[i] - closes[i - 1];
-        if (diff >= 0) gains += diff;
-        else losses += Math.abs(diff);
-      }
-      if (losses === 0) return 100;
-      const rs = (gains / period) / (losses / period);
-      return 100 - 100 / (1 + rs);
-    }
-
-    function calcMACD(closes) {
-      if (!Array.isArray(closes) || closes.length < 26) {
-        return { macd: null, signal: null, prevMacd: null, prevSignal: null };
-      }
-      const ema12 = calcEMA(closes, 12);
-      const ema26 = calcEMA(closes, 26);
-      const macdLine = closes.map((_, idx) => ema12[idx] - ema26[idx]);
-      const signalLine = calcEMA(macdLine, 9);
-      const lastIdx = closes.length - 1;
-      return {
-        macd: macdLine[lastIdx],
-        signal: signalLine[lastIdx],
-        prevMacd: macdLine[lastIdx - 1],
-        prevSignal: signalLine[lastIdx - 1]
-      };
-    }
-
-    function volumeExpanded(volumes) {
-      if (!Array.isArray(volumes) || volumes.length < 6) return null;
-      const today = volumes[volumes.length - 1] || 0;
-      const avg5 = average(volumes.slice(-6, -1));
-      return avg5 > 0 && today > avg5 * 1.3;
-    }
-
-    function epsGrowing(eps4q) {
-      if (!Array.isArray(eps4q) || eps4q.length !== 4) return null;
-      if (!eps4q.every((v) => Number.isFinite(v))) return null;
-      return eps4q[3] > eps4q[0];
-    }
-
-    function scoreStock(metrics) {
-      const rsiGood = Number.isFinite(metrics.rsi) ? metrics.rsi < 30 : null;
-      const breakout20 = Number.isFinite(metrics.price) && Number.isFinite(metrics.ma20) && Number.isFinite(metrics.prevClose)
-        ? metrics.price > metrics.ma20 && metrics.prevClose <= metrics.ma20
-        : null;
-      const macdFlipPositive = Number.isFinite(metrics.macd) && Number.isFinite(metrics.prevMacd)
-        ? metrics.macd > 0 && metrics.prevMacd <= 0
-        : null;
-      const epsAvailable = metrics.epsGrowth !== null;
-      const perAvailable = Number.isFinite(metrics.per);
-      const epsGood = epsAvailable ? Boolean(metrics.epsGrowth) : null;
-      const perGood = perAvailable ? metrics.per <= 20 : null;
-      const volumeGood = metrics.volumeExpanded;
-
-      const technicalParts = [];
-      if (rsiGood !== null) technicalParts.push(rsiGood ? 20 : 0);
-      if (breakout20 !== null) technicalParts.push(breakout20 ? 20 : 0);
-      if (macdFlipPositive !== null) technicalParts.push(macdFlipPositive ? 20 : 0);
-      const technical = technicalParts.reduce((sum, v) => sum + v, 0);
-      const technicalMax = technicalParts.length * 20;
-
-      const fundamentalParts = [];
-      if (epsAvailable) fundamentalParts.push(epsGood ? 10 : 0);
-      if (perAvailable) fundamentalParts.push(perGood ? 10 : 0);
-      const fundamental = fundamentalParts.reduce((sum, v) => sum + v, 0);
-      const fundamentalMax = fundamentalParts.length * 10;
-
-      const chips = volumeGood === null ? 0 : (volumeGood ? 20 : 0);
-      const chipsMax = volumeGood === null ? 0 : 20;
-      const rawScore = technical + fundamental + chips;
-      const maxScore = technicalMax + chipsMax + fundamentalMax;
-      const total = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : null;
-
-      let advice = "避開";
-      if (total === null) advice = "N/A";
-      else if (total >= 70) advice = "買進";
-      else if (total >= 45) advice = "觀察";
-      return {
-        total,
-        advice,
-        rsiGood,
-        breakout20,
-        macdFlipPositive,
-        epsAvailable,
-        perAvailable,
-        shortTermReady: rsiGood === true && breakout20 === true && macdFlipPositive === true
-      };
-    }
-
-    function scoreClass(score) {
-      if (!Number.isFinite(score)) return "";
-      if (score >= 70) return "score-high";
-      if (score >= 45) return "score-mid";
-      return "score-low";
-    }
-
-    function adviceTagClass(advice) {
-      if (advice === "買進") return "tag tag-buy";
-      if (advice === "觀察") return "tag tag-watch";
-      if (advice === "N/A") return "tag";
-      return "tag tag-avoid";
-    }
-
-    function toFixed(num, digits = 2) {
-      return Number(num).toFixed(digits);
-    }
-
-    function formatNumberOrNA(value, digits = 2) {
-      return Number.isFinite(value) ? toFixed(value, digits) : "N/A";
-    }
-
-    function formatIntegerOrNA(value) {
-      return Number.isFinite(value) ? Math.round(value).toLocaleString("zh-TW") : "N/A";
-    }
-
     function parseCodes(raw) {
-      return raw.split(",").map((code) => code.trim()).filter(Boolean);
+      return raw.split(",").map((v) => v.trim()).filter(Boolean);
     }
 
-    function isValidTwCode(code) {
+    function isValidCode(code) {
       return /^\d{4}$/.test(code);
     }
 
-    function getRecentMonthDates(totalMonths = 3) {
-      const dates = [];
-      const now = new Date();
-      for (let i = 0; i < totalMonths; i += 1) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        dates.push(`${y}${m}01`);
+    function toFixedOrNA(value, digits = 2) {
+      return Number.isFinite(value) ? Number(value).toFixed(digits) : "N/A";
+    }
+
+    function intOrNA(value) {
+      return Number.isFinite(value) ? Math.round(value).toLocaleString("zh-TW") : "N/A";
+    }
+
+    function suggestByBasicRule(close, rsi, ma20) {
+      if (!Number.isFinite(close)) return "N/A";
+      if (Number.isFinite(rsi) && rsi > 70) return "避開";
+      if (Number.isFinite(ma20) && close > ma20) return "觀察";
+      return "等回檔";
+    }
+
+    async function fetchStock(code) {
+      const url = `/api/stock?code=${encodeURIComponent(code)}`;
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "資料取得失敗，請確認股票代碼或稍後再試");
       }
-      return dates;
+      return data;
     }
 
-    async function fetchTwseLatestCloseData(code) {
-      const monthKeys = getRecentMonthDates(3);
-      const allRows = [];
-      let latestTradeDate = null;
-      let latestClose = null;
-      let latestVolume = null;
+    function renderSuccessRow(data) {
+      const close = Number(data.close);
+      const volume = Number(data.volume);
+      const ma5 = Number(data.MA5);
+      const ma20 = Number(data.MA20);
+      const rsi = Number(data.RSI);
+      const macd = Number(data.MACD);
+      const macdSignal = Number(data.MACDSignal);
+      const entry = Number.isFinite(close) ? close : null;
+      const stop = Number.isFinite(close) ? close * 0.95 : null;
+      const target = Number.isFinite(close) ? close * 1.1 : null;
+      const advice = suggestByBasicRule(close, rsi, ma20);
+      const adviceClass = advice === "買進" ? "tag-buy" : advice === "觀察" ? "tag-watch" : "tag-avoid";
 
-      for (const monthKey of monthKeys) {
-        const url = `${API_BASE}/api/twse-stock-day?date=${monthKey}&stockNo=${encodeURIComponent(code)}`;
-        const response = await fetchNoCache(url);
-        if (!response.ok) continue;
-        const payload = await response.json();
-        console.log("[TWSE STOCK_DAY]", code, monthKey, payload);
-        if (!Array.isArray(payload?.data)) continue;
-
-        const parsedMonthRows = payload.data
-          .map((row) => ({
-            tradeDate: row[0],
-            close: parseNumber(row[6]),
-            volume: parseNumber(row[1])
-          }))
-          .filter((row) => Number.isFinite(row.close) && Number.isFinite(row.volume));
-
-        if (!parsedMonthRows.length) continue;
-        allRows.push(...parsedMonthRows);
-
-        if (!latestTradeDate) {
-          const last = parsedMonthRows[parsedMonthRows.length - 1];
-          latestTradeDate = last.tradeDate;
-          latestClose = last.close;
-          latestVolume = last.volume;
-        }
-      }
-
-      if (!latestTradeDate || !Number.isFinite(latestClose) || !Number.isFinite(latestVolume)) {
-        throw new Error("找不到最近交易資料");
-      }
-
-      const closes = allRows.map((row) => row.close);
-      const volumes = allRows.map((row) => row.volume);
-
-      return {
-        code,
-        name: STOCK_NAME_MAP[code] || code,
-        source: "TWSE",
-        priceHistory: closes,
-        volumeHistory: volumes,
-        tradeDate: latestTradeDate,
-        price: latestClose,
-        volume: latestVolume,
-        marketTime: null
-      };
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${data.code}</td>
+        <td>${data.name || data.code}</td>
+        <td>${data.tradeDate || "N/A"}</td>
+        <td>${toFixedOrNA(close, 2)}</td>
+        <td>${intOrNA(volume)}</td>
+        <td>${toFixedOrNA(ma5, 2)}</td>
+        <td>${toFixedOrNA(ma20, 2)}</td>
+        <td>${toFixedOrNA(rsi, 1)}</td>
+        <td>${Number.isFinite(macd) && Number.isFinite(macdSignal) ? `${macd.toFixed(3)} / ${macdSignal.toFixed(3)}` : "N/A"}</td>
+        <td>${toFixedOrNA(entry, 2)}</td>
+        <td class="down">${toFixedOrNA(stop, 2)}</td>
+        <td class="up">${toFixedOrNA(target, 2)}</td>
+        <td><span class="tag ${adviceClass}">${advice}</span></td>
+      `;
+      resultBody.appendChild(tr);
+      renderStockCard(data, { close, rsi, ma20, advice, stop, target });
     }
 
-    function getYahooSymbols(code) {
-      return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
+    function renderStockCard(data, metrics) {
+      const adviceClass = metrics.advice === "觀察" ? "tag-watch" : metrics.advice === "等回檔" ? "tag-buy" : "tag-avoid";
+      const card = document.createElement("article");
+      card.className = "stock-item";
+      card.innerHTML = `
+        <div class="stock-head">
+          <div class="stock-code">${data.code}</div>
+          <span class="tag ${adviceClass}">${metrics.advice}</span>
+        </div>
+        <div class="stock-price">${toFixedOrNA(metrics.close, 2)}</div>
+        <div class="stock-meta">資料日期：${data.tradeDate || "N/A"}</div>
+        <div class="stock-row"><span>RSI</span><strong>${toFixedOrNA(metrics.rsi, 1)}</strong></div>
+        <div class="stock-row"><span>MA20</span><strong>${toFixedOrNA(metrics.ma20, 2)}</strong></div>
+        <div class="stock-row"><span>停損價</span><strong class="down">${toFixedOrNA(metrics.stop, 2)}</strong></div>
+        <div class="stock-row"><span>目標價</span><strong class="up">${toFixedOrNA(metrics.target, 2)}</strong></div>
+      `;
+      dashboardGrid.appendChild(card);
     }
 
-    async function fetchYahooFundamentals(code) {
-      const symbols = getYahooSymbols(code);
-      let lastError = "Yahoo Fundamentals 無可用資料";
-
-      for (const symbol of symbols) {
-        try {
-          const url = `${API_BASE}/api/yahoo-fundamentals?symbol=${encodeURIComponent(symbol)}`;
-          const response = await fetchNoCache(url);
-          if (!response.ok) {
-            lastError = `Yahoo Fundamentals HTTP ${response.status}`;
-            continue;
-          }
-
-          const payload = await response.json();
-          console.log("[Yahoo Fundamentals]", symbol, payload);
-          const result = payload?.quoteSummary?.result?.[0];
-          if (!result) {
-            lastError = "Yahoo Fundamentals 無資料";
-            continue;
-          }
-
-          const trailingPe = result?.defaultKeyStatistics?.trailingPE?.raw;
-          const trailingEps = result?.defaultKeyStatistics?.trailingEps?.raw;
-          const quarterly = result?.earnings?.earningsChart?.quarterly || [];
-          const eps4qFromQuarterly = quarterly
-            .map((q) => q?.actual?.raw)
-            .filter((v) => Number.isFinite(v))
-            .slice(-4);
-
-          const eps4q = eps4qFromQuarterly.length === 4 ? eps4qFromQuarterly : null;
-
-          if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && !eps4q) {
-            lastError = "Yahoo Fundamentals 欄位不足";
-            continue;
-          }
-
-          let per = Number.isFinite(trailingPe) ? trailingPe : null;
-          if (!Number.isFinite(per)) per = null;
-
-          return {
-            eps4q,
-            per: Number.isFinite(per) ? per : null,
-            source: "Yahoo"
-          };
-        } catch (error) {
-          lastError = String(error.message || error);
-        }
-      }
-
-      throw new Error(lastError);
+    function renderErrorRow(code, message) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${code}</td>
+        <td colspan="12" style="color:#b91c1c;">${message}</td>
+      `;
+      resultBody.appendChild(tr);
+      const card = document.createElement("article");
+      card.className = "stock-item";
+      card.innerHTML = `
+        <div class="stock-head">
+          <div class="stock-code">${code}</div>
+          <span class="tag tag-avoid">避開</span>
+        </div>
+        <div class="stock-meta" style="color:#b91c1c;">${message}</div>
+      `;
+      dashboardGrid.appendChild(card);
     }
 
-    function getRecentBusinessDateString() {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}${m}${day}`;
-    }
-
-    async function fetchTwsePer(code) {
-      const date = getRecentBusinessDateString();
-      const url = `${API_BASE}/api/twse-per?date=${date}&stockNo=${encodeURIComponent(code)}`;
-      const response = await fetchNoCache(url);
-      if (!response.ok) throw new Error(`TWSE PER HTTP ${response.status}`);
-
-      const payload = await response.json();
-      console.log("[TWSE PER]", code, payload);
-      if (!Array.isArray(payload?.fields) || !Array.isArray(payload?.data) || payload.data.length < 1) {
-        throw new Error("TWSE PER 無資料");
-      }
-
-      const perIndex = payload.fields.findIndex((f) => String(f).includes("本益比"));
-      if (perIndex < 0) throw new Error("TWSE PER 欄位缺失");
-
-      const perRaw = payload.data[0]?.[perIndex];
-      const per = parseNumber(perRaw);
-      if (!Number.isFinite(per) || per <= 0) throw new Error("TWSE PER 無有效數值");
-
-      return { per, source: "TWSE" };
-    }
-
-    async function getFundamentals(code) {
-      const local = { name: STOCK_NAME_MAP[code] || code };
-      try {
-        const yahoo = await fetchYahooFundamentals(code);
-        return {
-          name: local.name,
-          eps4q: Array.isArray(yahoo.eps4q) && yahoo.eps4q.length === 4 ? yahoo.eps4q : null,
-          per: Number.isFinite(yahoo.per) ? yahoo.per : null,
-          source: yahoo.source,
-          usedFallback: false,
-          scoreable: true
-        };
-      } catch (yahooError) {
-        try {
-          const twsePer = await fetchTwsePer(code);
-          return {
-            name: local.name,
-            eps4q: null,
-            per: twsePer.per,
-            source: twsePer.source,
-            usedFallback: true,
-            scoreable: true
-          };
-        } catch (twseError) {
-          return {
-            name: local.name,
-            eps4q: null,
-            per: null,
-            source: "N/A",
-            usedFallback: true,
-            scoreable: false,
-            warning: `基本面資料取得失敗（${yahooError.message} / ${twseError.message}），不列入評分`
-          };
-        }
-      }
-    }
-
-    async function getStockData(code) {
-      try {
-        const twse = await fetchTwseLatestCloseData(code);
-        return { ok: true, data: twse };
-      } catch (_error) {
-        return {
-          ok: false,
-          code,
-          error: "資料取得失敗，請確認股票代碼或稍後再試"
-        };
-      }
-    }
-
-    async function buildAnalysis(stockData) {
-      const closes = stockData.priceHistory;
-      const volumes = stockData.volumeHistory;
-      const ma5 = closes.length >= 5 ? average(closes.slice(-5)) : null;
-      const ma20 = closes.length >= 20 ? average(closes.slice(-20)) : null;
-      const rsi = calcRSI(closes, 14);
-      const macdData = calcMACD(closes);
-      const volumeIsExpanded = volumeExpanded(volumes);
-      const fundamental = await getFundamentals(stockData.code);
-      const epsGrowth = epsGrowing(fundamental.eps4q);
-
-      const metrics = {
-        price: stockData.price,
-        ma20,
-        rsi,
-        prevClose: closes[closes.length - 2] || closes[closes.length - 1],
-        macd: macdData.macd,
-        signal: macdData.signal,
-        prevMacd: macdData.prevMacd,
-        prevSignal: macdData.prevSignal,
-        epsGrowth,
-        per: fundamental.per,
-        volumeExpanded: volumeIsExpanded
-      };
-      const scored = scoreStock(metrics);
-
-      return {
-        ...stockData,
-        name: fundamental.name || stockData.name,
-        ma5,
-        ma20,
-        rsi,
-        macdData,
-        eps4q: fundamental.eps4q,
-        per: fundamental.per,
-        fundamentalSource: fundamental.source,
-        fundamentalWarning: fundamental.warning || "",
-        fundamentalScoreable: fundamental.scoreable !== false,
-        marketDataSource: stockData.source,
-        tradeDate: stockData.tradeDate || null,
-        marketTime: stockData.marketTime || null,
-        marketDataWarning: "",
-        entryPrice: Number.isFinite(stockData.price) ? stockData.price : null,
-        stopLossPrice: Number.isFinite(stockData.price) ? stockData.price * 0.95 : null,
-        targetPrice: Number.isFinite(stockData.price) ? stockData.price * 1.10 : null,
-        volumeIsExpanded,
-        scored
-      };
-    }
-
-    function getSignalText(scored) {
-      const signals = [];
-      if (scored.rsiGood === true) signals.push("RSI<30");
-      if (scored.macdFlipPositive === true) signals.push("MACD翻正");
-      if (scored.breakout20 === true) signals.push("突破20MA");
-      const hasAnySignalData = scored.rsiGood !== null || scored.macdFlipPositive !== null || scored.breakout20 !== null;
-      if (!hasAnySignalData) return "N/A";
-      return signals.length ? signals.join(" + ") : "-";
-    }
-
-    function formatEps4q(eps4q) {
-      if (!Array.isArray(eps4q) || eps4q.length !== 4) return "N/A";
-      if (!eps4q.every((v) => Number.isFinite(v))) return "N/A";
-      return eps4q.map((v) => toFixed(v, 2)).join(" / ");
-    }
-
-    function renderRows(analysisList, failList) {
+    async function analyze() {
+      const codes = parseCodes(codesInput.value);
       resultBody.innerHTML = "";
-      recommendList.innerHTML = "";
-      emptyRecommend.hidden = true;
-      const recommendations = [];
+      dashboardGrid.innerHTML = "";
 
-      analysisList.forEach((item) => {
-        const row = document.createElement("tr");
-        const strengthText = Number.isFinite(item.scored.total)
-          ? (item.scored.total >= 70 ? "偏強" : "偏弱")
-          : "N/A";
-        row.innerHTML = `
-          <td>${item.code}</td>
-          <td>${item.name}</td>
-          <td>${item.tradeDate || "N/A"}</td>
-          <td title="來源：${item.marketDataSource}${item.marketTime ? `，更新：${new Date(item.marketTime).toLocaleString("zh-TW")}` : ""}">${formatNumberOrNA(item.price, 2)}</td>
-          <td title="來源：${item.marketDataSource}">${formatIntegerOrNA(item.volume)}</td>
-          <td>${formatNumberOrNA(item.ma5, 2)}</td>
-          <td>${formatNumberOrNA(item.ma20, 2)}</td>
-          <td class="${Number.isFinite(item.rsi) && item.rsi < 30 ? "up" : ""}">${formatNumberOrNA(item.rsi, 1)}</td>
-          <td>${Number.isFinite(item.macdData.macd) && Number.isFinite(item.macdData.signal) ? `${toFixed(item.macdData.macd, 3)} / ${toFixed(item.macdData.signal, 3)}` : "N/A"}</td>
-          <td>${getSignalText(item.scored)}</td>
-          <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${formatEps4q(item.eps4q)}</td>
-          <td title="來源：${item.fundamentalSource}${item.fundamentalScoreable ? "" : "（參考值，不計分）"}">${Number.isFinite(item.per) ? toFixed(item.per, 1) : "N/A"}</td>
-          <td>${formatNumberOrNA(item.entryPrice, 2)}</td>
-          <td class="down">${formatNumberOrNA(item.stopLossPrice, 2)}</td>
-          <td class="up">${formatNumberOrNA(item.targetPrice, 2)}</td>
-          <td class="${Number.isFinite(item.scored.total) && item.scored.total >= 70 ? "trend-strong" : "trend-weak"}">${strengthText}</td>
-          <td class="${scoreClass(item.scored.total)}">${Number.isFinite(item.scored.total) ? item.scored.total : "N/A"}</td>
-          <td><span class="${adviceTagClass(item.scored.advice)}">${item.scored.advice}</span></td>
-        `;
-        resultBody.appendChild(row);
-
-        if (item.scored.shortTermReady) {
-          recommendations.push(
-            `${item.code} ${item.name}（進場 ${toFixed(item.entryPrice, 2)} / 停損 ${toFixed(item.stopLossPrice, 2)} / 目標 ${toFixed(item.targetPrice, 2)}）`
-          );
-        }
-      });
-
-      failList.forEach((failed) => {
-        const missRow = document.createElement("tr");
-        missRow.innerHTML = `
-          <td>${failed.code}</td>
-          <td colspan="17" style="color:#b91c1c;">${failed.error}</td>
-        `;
-        resultBody.appendChild(missRow);
-      });
-
-      if (recommendations.length === 0) {
-        emptyRecommend.hidden = false;
-      } else {
-        recommendations.forEach((text) => {
-          const li = document.createElement("li");
-          li.textContent = text;
-          recommendList.appendChild(li);
-        });
-      }
-    }
-
-    async function analyzeStocks() {
-      const codes = parseCodes(stockCodesInput.value);
       if (!codes.length) {
         showStatus("請先輸入至少一檔股票代碼。", "warn");
-        resultBody.innerHTML = "";
-        recommendList.innerHTML = "";
-        emptyRecommend.hidden = false;
         return;
       }
 
-      const invalidCodes = codes.filter((code) => !isValidTwCode(code));
-      if (invalidCodes.length > 0) {
-        resultBody.innerHTML = "";
-        recommendList.innerHTML = "";
-        emptyRecommend.hidden = false;
-        invalidCodes.forEach((code) => {
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${code}</td>
-            <td colspan="17" style="color:#b91c1c;">股票代碼格式錯誤</td>
-          `;
-          resultBody.appendChild(row);
-        });
+      const invalid = codes.filter((c) => !isValidCode(c));
+      if (invalid.length) {
+        invalid.forEach((code) => renderErrorRow(code, "股票代碼格式錯誤"));
         showStatus("股票代碼格式錯誤", "error");
         return;
       }
 
+      showStatus("正在查詢最近交易日收盤資料...", "info");
       analyzeBtn.disabled = true;
-      showStatus("正在抓取最近交易日收盤資料，請稍候...", "info");
 
-      const jobs = await Promise.all(codes.map((code) => getStockData(code)));
-      const successList = await Promise.all(
-        jobs.filter((item) => item.ok).map((item) => buildAnalysis(item.data))
-      );
-      const failList = jobs.filter((item) => !item.ok);
-      latestAnalysisList = successList;
-      latestFailList = failList;
-      renderRows(successList, failList);
-      const fundamentalWarnCount = successList.filter((x) => x.fundamentalWarning).length;
+      let success = 0;
+      let fail = 0;
 
-      if (!successList.length) {
-        showStatus("所有股票都抓取失敗，請稍後再試或確認網路連線。", "error");
-      } else if (failList.length) {
-        showStatus(
-          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。基本面降級 ${fundamentalWarnCount} 檔。${getMarketSessionHint()}`,
-          "warn"
-        );
-      } else if (fundamentalWarnCount > 0) {
-        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面資料不足未納入評分。${getMarketSessionHint()}`, "warn");
+      for (const code of codes) {
+        try {
+          const data = await fetchStock(code);
+          renderSuccessRow(data);
+          success += 1;
+        } catch (error) {
+          renderErrorRow(code, error.message || "資料取得失敗，請確認股票代碼或稍後再試");
+          fail += 1;
+        }
+      }
+
+      if (!success) {
+        showStatus("所有股票都查詢失敗。", "error");
+      } else if (fail) {
+        showStatus(`完成 ${success} 檔，失敗 ${fail} 檔。`, "warn");
       } else {
-        showStatus(`全部完成，共 ${successList.length} 檔。${getMarketSessionHint()}`, "info");
+        showStatus(`完成 ${success} 檔。`, "info");
       }
 
       analyzeBtn.disabled = false;
     }
 
-    analyzeBtn.addEventListener("click", analyzeStocks);
-
-    quickFilterBtn.addEventListener("click", () => {
-      if (!latestAnalysisList.length && !latestFailList.length) {
-        showStatus("請先按「分析」取得資料後再篩選。", "warn");
-        return;
-      }
-      const filtered = latestAnalysisList.filter((item) => item.scored.shortTermReady);
-      renderRows(filtered, latestFailList);
-      showStatus(`短線篩選完成：共 ${filtered.length} 檔符合（RSI<30 + MACD翻正 + 突破20MA）。`, "info");
-    });
-
+    analyzeBtn.addEventListener("click", analyze);
     clearBtn.addEventListener("click", () => {
-      stockCodesInput.value = "";
+      codesInput.value = "";
       resultBody.innerHTML = "";
-      recommendList.innerHTML = "";
-      emptyRecommend.hidden = false;
-      latestAnalysisList = [];
-      latestFailList = [];
+      dashboardGrid.innerHTML = "";
       showStatus("", "info");
     });
-
-    analyzeStocks();
   </script>
 </body>
 </html>
