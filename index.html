@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台股新手選股工具（即時版）</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --subtext: #6b7280;
+      --line: #dbe2ea;
+      --primary: #2563eb;
+      --good: #dc2626;
+      --bad: #16a34a;
+      --warn: #ea580c;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+        "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 22px;
+    }
+
+    .container {
+      max-width: 1150px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.4rem;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--subtext);
+      font-size: 0.93rem;
+      line-height: 1.5;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      align-items: end;
+      margin-top: 12px;
+    }
+
+    label {
+      display: block;
+      color: var(--subtext);
+      font-size: 0.9rem;
+      margin-bottom: 5px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.98rem;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--primary);
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      min-width: 102px;
+    }
+
+    button.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    button.secondary {
+      background: #fff7ed;
+      color: #9a3412;
+      border-color: #fdba74;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1360px;
+      background: #fff;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+      padding: 10px 8px;
+      font-size: 0.92rem;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .up {
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    .down {
+      color: var(--bad);
+      font-weight: 700;
+    }
+
+    .score-high {
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    .score-mid {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .score-low {
+      color: var(--bad);
+      font-weight: 700;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .tag-buy { background: #dc2626; }
+    .tag-watch { background: #ea580c; }
+    .tag-avoid { background: #16a34a; }
+    .trend-strong { color: #dc2626; font-weight: 700; }
+    .trend-weak { color: #16a34a; font-weight: 700; }
+
+    .mini-note {
+      margin-top: 12px;
+      color: var(--subtext);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .recommend-list {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      line-height: 1.7;
+    }
+
+    .empty {
+      color: var(--subtext);
+      padding: 10px 2px 2px;
+      font-size: 0.95rem;
+    }
+
+    .status {
+      margin-top: 10px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .status.info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+    }
+
+    .status.warn {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #c2410c;
+    }
+
+    @media (max-width: 840px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="card">
+      <h1>台股新手選股工具（即時資料）</h1>
+      <p class="hint">
+        一次可輸入多檔股票代碼（逗號分隔），例如：2330, 2317, 0050。
+        <br>
+        資料來源：Yahoo Finance（優先）→ TWSE（備援）。分數為教學參考，不是投資建議。
+      </p>
+      <div class="controls">
+        <div>
+          <label for="stockCodes">股票代碼（可多檔）</label>
+          <input id="stockCodes" type="text" value="2330, 2317, 2603, 0050, 3008">
+        </div>
+        <button id="analyzeBtn" class="primary" type="button">分析</button>
+        <button id="quickFilterBtn" class="secondary" type="button">一鍵篩選短線</button>
+        <button id="clearBtn" type="button">清空</button>
+      </div>
+      <div id="statusBox" class="status info" hidden></div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>代碼</th>
+              <th>名稱</th>
+              <th>現價</th>
+              <th>成交量</th>
+              <th>5日MA</th>
+              <th>20日MA</th>
+              <th>RSI</th>
+              <th>MACD</th>
+              <th>短線訊號</th>
+              <th>EPS(近四季)</th>
+              <th>PER</th>
+              <th>建議進場</th>
+              <th>停損(-5%)</th>
+              <th>目標(+10%)</th>
+              <th>強弱</th>
+              <th>分數</th>
+              <th>建議</th>
+            </tr>
+          </thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+      <p class="mini-note">
+        指標小教室（超簡單版）：RSI 像「熱不熱」，太低可能被賣過頭；
+        MA 是平均線，價格在 20MA 上面代表近期比較強；
+        MACD 黃金交叉像短期動能轉強；
+        EPS 是公司賺錢能力，越成長通常越好；
+        PER 是市場願意給的倍數，太高可能代表偏貴；
+        成交量放大代表有更多人進場關注。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0;font-size:1.1rem;">推薦清單（短線 1~14 天）</h2>
+      <p class="hint" style="margin-top:8px;">
+        條件：RSI &lt; 30、MACD 剛翻正、突破 20MA
+      </p>
+      <ul id="recommendList" class="recommend-list"></ul>
+      <p id="emptyRecommend" class="empty" hidden>目前沒有符合條件的股票。</p>
+    </section>
+  </div>
+
+  <script>
+    const STOCK_SUFFIX = ".TW";
+    const API_BASE = "";
+    const FUNDAMENTALS_FALLBACK = {
+      "2330": { name: "台積電", eps4q: [8.71, 9.10, 9.45, 9.88], per: 22.1 },
+      "2317": { name: "鴻海", eps4q: [2.63, 2.81, 2.99, 3.12], per: 13.9 },
+      "2603": { name: "長榮", eps4q: [10.11, 9.72, 9.21, 8.66], per: 7.8 },
+      "0050": { name: "元大台灣50", eps4q: [2.71, 2.79, 2.85, 2.93], per: 17.5 },
+      "3008": { name: "大立光", eps4q: [34.2, 32.5, 31.8, 30.1], per: 28.8 }
+    };
+
+    const resultBody = document.getElementById("resultBody");
+    const recommendList = document.getElementById("recommendList");
+    const emptyRecommend = document.getElementById("emptyRecommend");
+    const stockCodesInput = document.getElementById("stockCodes");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const quickFilterBtn = document.getElementById("quickFilterBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const statusBox = document.getElementById("statusBox");
+    let latestAnalysisList = [];
+    let latestFailList = [];
+
+    function showStatus(message, type = "info") {
+      statusBox.hidden = !message;
+      statusBox.textContent = message || "";
+      statusBox.className = `status ${type}`;
+    }
+
+    function parseNumber(input) {
+      if (input === null || input === undefined) return null;
+      const cleaned = String(input).replaceAll(",", "").trim();
+      if (cleaned === "--" || cleaned === "") return null;
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function average(values) {
+      if (!values.length) return 0;
+      return values.reduce((sum, val) => sum + val, 0) / values.length;
+    }
+
+    function calcEMA(data, period) {
+      const k = 2 / (period + 1);
+      let ema = data[0] || 0;
+      const result = [ema];
+      for (let i = 1; i < data.length; i += 1) {
+        ema = data[i] * k + ema * (1 - k);
+        result.push(ema);
+      }
+      return result;
+    }
+
+    function calcRSI(closes, period = 14) {
+      if (closes.length <= period) return 50;
+      let gains = 0;
+      let losses = 0;
+      for (let i = closes.length - period; i < closes.length; i += 1) {
+        const diff = closes[i] - closes[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses += Math.abs(diff);
+      }
+      if (losses === 0) return 100;
+      const rs = (gains / period) / (losses / period);
+      return 100 - 100 / (1 + rs);
+    }
+
+    function calcMACD(closes) {
+      if (closes.length < 26) {
+        return { macd: 0, signal: 0, prevMacd: 0, prevSignal: 0 };
+      }
+      const ema12 = calcEMA(closes, 12);
+      const ema26 = calcEMA(closes, 26);
+      const macdLine = closes.map((_, idx) => ema12[idx] - ema26[idx]);
+      const signalLine = calcEMA(macdLine, 9);
+      const lastIdx = closes.length - 1;
+      return {
+        macd: macdLine[lastIdx],
+        signal: signalLine[lastIdx],
+        prevMacd: macdLine[lastIdx - 1],
+        prevSignal: signalLine[lastIdx - 1]
+      };
+    }
+
+    function volumeExpanded(volumes) {
+      const today = volumes[volumes.length - 1] || 0;
+      const avg5 = average(volumes.slice(-6, -1));
+      return avg5 > 0 && today > avg5 * 1.3;
+    }
+
+    function epsGrowing(eps4q) {
+      return eps4q[3] > eps4q[0];
+    }
+
+    function scoreStock(metrics) {
+      const rsiGood = metrics.rsi < 30;
+      const breakout20 = metrics.price > metrics.ma20 && metrics.prevClose <= metrics.ma20;
+      const macdFlipPositive = metrics.macd > 0 && metrics.prevMacd <= 0;
+      const epsGood = metrics.epsGrowth;
+      const perGood = metrics.per <= 20;
+      const volumeGood = metrics.volumeExpanded;
+      const technical = ((rsiGood ? 1 : 0) + (breakout20 ? 1 : 0) + (macdFlipPositive ? 1 : 0)) / 3 * 60;
+      const fundamental = ((epsGood ? 1 : 0) + (perGood ? 1 : 0)) / 2 * 20;
+      const chips = (volumeGood ? 1 : 0) * 20;
+      const total = Math.round(technical + fundamental + chips);
+
+      let advice = "避開";
+      if (total >= 70) advice = "買進";
+      else if (total >= 45) advice = "觀察";
+      return {
+        total,
+        advice,
+        rsiGood,
+        breakout20,
+        macdFlipPositive,
+        shortTermReady: rsiGood && breakout20 && macdFlipPositive
+      };
+    }
+
+    function scoreClass(score) {
+      if (score >= 70) return "score-high";
+      if (score >= 45) return "score-mid";
+      return "score-low";
+    }
+
+    function adviceTagClass(advice) {
+      if (advice === "買進") return "tag tag-buy";
+      if (advice === "觀察") return "tag tag-watch";
+      return "tag tag-avoid";
+    }
+
+    function toFixed(num, digits = 2) {
+      return Number(num).toFixed(digits);
+    }
+
+    function parseCodes(raw) {
+      return raw.split(",").map((code) => code.trim()).filter(Boolean);
+    }
+
+    async function fetchYahooData(code) {
+      const symbol = `${code}${STOCK_SUFFIX}`;
+      const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Yahoo HTTP ${response.status}`);
+      const payload = await response.json();
+      const result = payload?.chart?.result?.[0];
+      const quote = result?.indicators?.quote?.[0];
+      const closesRaw = quote?.close || [];
+      const volumesRaw = quote?.volume || [];
+      const closes = closesRaw.filter((x) => Number.isFinite(x));
+      const volumes = volumesRaw.filter((x) => Number.isFinite(x));
+
+      if (closes.length < 30 || volumes.length < 30) {
+        throw new Error("Yahoo 資料長度不足");
+      }
+
+      return {
+        code,
+        name: result?.meta?.longName || result?.meta?.shortName || FUNDAMENTALS_FALLBACK[code]?.name || code,
+        source: "Yahoo",
+        priceHistory: closes,
+        volumeHistory: volumes,
+        price: result?.meta?.regularMarketPrice ?? closes[closes.length - 1],
+        volume: result?.meta?.regularMarketVolume ?? volumes[volumes.length - 1]
+      };
+    }
+
+    function getRecentMonthDates(totalMonths = 6) {
+      const dates = [];
+      const now = new Date();
+      for (let i = 0; i < totalMonths; i += 1) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        dates.push(`${y}${m}01`);
+      }
+      return dates.reverse();
+    }
+
+    async function fetchTwseData(code) {
+      const monthKeys = getRecentMonthDates(6);
+      const allRows = [];
+
+      for (const monthKey of monthKeys) {
+        const url = `${API_BASE}/api/twse-stock-day?date=${monthKey}&stockNo=${encodeURIComponent(code)}`;
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        const payload = await response.json();
+        if (!Array.isArray(payload?.data)) continue;
+        allRows.push(...payload.data);
+      }
+
+      const parsed = allRows
+        .map((row) => ({
+          close: parseNumber(row[6]),
+          volume: parseNumber(row[1])
+        }))
+        .filter((row) => Number.isFinite(row.close) && Number.isFinite(row.volume));
+
+      if (parsed.length < 30) throw new Error("TWSE 資料不足");
+
+      const closes = parsed.map((row) => row.close);
+      const volumes = parsed.map((row) => row.volume);
+
+      return {
+        code,
+        name: FUNDAMENTALS_FALLBACK[code]?.name || code,
+        source: "TWSE",
+        priceHistory: closes,
+        volumeHistory: volumes,
+        price: closes[closes.length - 1],
+        volume: volumes[volumes.length - 1]
+      };
+    }
+
+    async function fetchYahooFundamentals(code) {
+      const symbol = `${code}${STOCK_SUFFIX}`;
+      const url = `${API_BASE}/api/yahoo-fundamentals?symbol=${encodeURIComponent(symbol)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Yahoo Fundamentals HTTP ${response.status}`);
+
+      const payload = await response.json();
+      const result = payload?.quoteSummary?.result?.[0];
+      if (!result) throw new Error("Yahoo Fundamentals 無資料");
+
+      const trailingPe = result?.defaultKeyStatistics?.trailingPE?.raw;
+      const trailingEps = result?.defaultKeyStatistics?.trailingEps?.raw;
+      const quarterly = result?.earnings?.earningsChart?.quarterly || [];
+      const eps4qFromQuarterly = quarterly
+        .map((q) => q?.actual?.raw)
+        .filter((v) => Number.isFinite(v))
+        .slice(-4);
+
+      let eps4q = eps4qFromQuarterly;
+      if (eps4q.length < 4 && Number.isFinite(trailingEps)) {
+        const avgQ = trailingEps / 4;
+        eps4q = [avgQ, avgQ, avgQ, avgQ];
+      }
+
+      if (!Number.isFinite(trailingPe) && !Number.isFinite(trailingEps) && eps4q.length < 4) {
+        throw new Error("Yahoo Fundamentals 欄位不足");
+      }
+
+      let per = Number.isFinite(trailingPe) ? trailingPe : null;
+      if (!Number.isFinite(per) && Number.isFinite(trailingEps) && trailingEps > 0) {
+        const latestPrice = result?.financialData?.currentPrice?.raw;
+        if (Number.isFinite(latestPrice)) per = latestPrice / trailingEps;
+      }
+
+      return {
+        eps4q: eps4q.length === 4 ? eps4q : null,
+        per: Number.isFinite(per) ? per : null,
+        source: "Yahoo"
+      };
+    }
+
+    function getRecentBusinessDateString() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}${m}${day}`;
+    }
+
+    async function fetchTwsePer(code) {
+      const date = getRecentBusinessDateString();
+      const url = `${API_BASE}/api/twse-per?date=${date}&stockNo=${encodeURIComponent(code)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`TWSE PER HTTP ${response.status}`);
+
+      const payload = await response.json();
+      if (!Array.isArray(payload?.fields) || !Array.isArray(payload?.data) || payload.data.length < 1) {
+        throw new Error("TWSE PER 無資料");
+      }
+
+      const perIndex = payload.fields.findIndex((f) => String(f).includes("本益比"));
+      if (perIndex < 0) throw new Error("TWSE PER 欄位缺失");
+
+      const perRaw = payload.data[0]?.[perIndex];
+      const per = parseNumber(perRaw);
+      if (!Number.isFinite(per) || per <= 0) throw new Error("TWSE PER 無有效數值");
+
+      return { per, source: "TWSE" };
+    }
+
+    async function getFundamentals(code, latestPrice) {
+      const local = FUNDAMENTALS_FALLBACK[code] || { name: code, eps4q: [0, 0, 0, 0], per: 999 };
+      try {
+        const yahoo = await fetchYahooFundamentals(code);
+        return {
+          name: local.name,
+          eps4q: yahoo.eps4q || local.eps4q,
+          per: Number.isFinite(yahoo.per) ? yahoo.per : local.per,
+          source: yahoo.source,
+          usedFallback: false
+        };
+      } catch (yahooError) {
+        try {
+          const twsePer = await fetchTwsePer(code);
+          let eps4q = local.eps4q;
+          if ((!eps4q || eps4q.length !== 4 || eps4q.every((v) => v === 0)) && Number.isFinite(latestPrice) && twsePer.per > 0) {
+            const trailingEps = latestPrice / twsePer.per;
+            const q = trailingEps / 4;
+            eps4q = [q, q, q, q];
+          }
+          return {
+            name: local.name,
+            eps4q,
+            per: twsePer.per,
+            source: twsePer.source,
+            usedFallback: true
+          };
+        } catch (twseError) {
+          return {
+            name: local.name,
+            eps4q: local.eps4q,
+            per: local.per,
+            source: "Local",
+            usedFallback: true,
+            warning: `基本面即時資料失敗（${yahooError.message} / ${twseError.message}）`
+          };
+        }
+      }
+    }
+
+    async function getStockData(code) {
+      try {
+        const yahoo = await fetchYahooData(code);
+        return { ok: true, data: yahoo, fallbackUsed: false };
+      } catch (yahooError) {
+        try {
+          const twse = await fetchTwseData(code);
+          return { ok: true, data: twse, fallbackUsed: true };
+        } catch (twseError) {
+          return {
+            ok: false,
+            code,
+            error: `Yahoo 與 TWSE 都失敗（${yahooError.message} / ${twseError.message}）`
+          };
+        }
+      }
+    }
+
+    async function buildAnalysis(stockData) {
+      const closes = stockData.priceHistory;
+      const volumes = stockData.volumeHistory;
+      const ma5 = average(closes.slice(-5));
+      const ma20 = average(closes.slice(-20));
+      const rsi = calcRSI(closes, 14);
+      const macdData = calcMACD(closes);
+      const volumeIsExpanded = volumeExpanded(volumes);
+      const fundamental = await getFundamentals(stockData.code, stockData.price);
+      const epsGrowth = epsGrowing(fundamental.eps4q);
+
+      const metrics = {
+        price: stockData.price,
+        ma20,
+        rsi,
+        prevClose: closes[closes.length - 2] || closes[closes.length - 1],
+        macd: macdData.macd,
+        signal: macdData.signal,
+        prevMacd: macdData.prevMacd,
+        prevSignal: macdData.prevSignal,
+        epsGrowth,
+        per: fundamental.per,
+        volumeExpanded: volumeIsExpanded
+      };
+      const scored = scoreStock(metrics);
+
+      return {
+        ...stockData,
+        name: fundamental.name || stockData.name,
+        ma5,
+        ma20,
+        rsi,
+        macdData,
+        eps4q: fundamental.eps4q,
+        per: fundamental.per,
+        fundamentalSource: fundamental.source,
+        fundamentalWarning: fundamental.warning || "",
+        entryPrice: stockData.price,
+        stopLossPrice: stockData.price * 0.95,
+        targetPrice: stockData.price * 1.10,
+        volumeIsExpanded,
+        scored
+      };
+    }
+
+    function getSignalText(scored) {
+      const signals = [];
+      if (scored.rsiGood) signals.push("RSI<30");
+      if (scored.macdFlipPositive) signals.push("MACD翻正");
+      if (scored.breakout20) signals.push("突破20MA");
+      return signals.length ? signals.join(" + ") : "-";
+    }
+
+    function renderRows(analysisList, failList) {
+      resultBody.innerHTML = "";
+      recommendList.innerHTML = "";
+      emptyRecommend.hidden = true;
+      const recommendations = [];
+
+      analysisList.forEach((item) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.code}</td>
+          <td>${item.name}</td>
+          <td>${toFixed(item.price, 2)}</td>
+          <td>${Math.round(item.volume).toLocaleString("zh-TW")}</td>
+          <td>${toFixed(item.ma5, 2)}</td>
+          <td>${toFixed(item.ma20, 2)}</td>
+          <td class="${item.rsi < 30 ? "up" : ""}">${toFixed(item.rsi, 1)}</td>
+          <td>${toFixed(item.macdData.macd, 3)} / ${toFixed(item.macdData.signal, 3)}</td>
+          <td>${getSignalText(item.scored)}</td>
+          <td title="來源：${item.fundamentalSource}">${item.eps4q.map((v) => toFixed(v, 2)).join(" / ")}</td>
+          <td title="來源：${item.fundamentalSource}">${toFixed(item.per, 1)}</td>
+          <td>${toFixed(item.entryPrice, 2)}</td>
+          <td class="down">${toFixed(item.stopLossPrice, 2)}</td>
+          <td class="up">${toFixed(item.targetPrice, 2)}</td>
+          <td class="${item.scored.total >= 70 ? "trend-strong" : "trend-weak"}">${item.scored.total >= 70 ? "偏強" : "偏弱"}</td>
+          <td class="${scoreClass(item.scored.total)}">${item.scored.total}</td>
+          <td><span class="${adviceTagClass(item.scored.advice)}">${item.scored.advice}</span></td>
+        `;
+        resultBody.appendChild(row);
+
+        if (item.scored.shortTermReady) {
+          recommendations.push(
+            `${item.code} ${item.name}（進場 ${toFixed(item.entryPrice, 2)} / 停損 ${toFixed(item.stopLossPrice, 2)} / 目標 ${toFixed(item.targetPrice, 2)}）`
+          );
+        }
+      });
+
+      failList.forEach((failed) => {
+        const missRow = document.createElement("tr");
+        missRow.innerHTML = `
+          <td>${failed.code}</td>
+          <td colspan="16" style="color:#b91c1c;">資料抓取失敗：${failed.error}</td>
+        `;
+        resultBody.appendChild(missRow);
+      });
+
+      if (recommendations.length === 0) {
+        emptyRecommend.hidden = false;
+      } else {
+        recommendations.forEach((text) => {
+          const li = document.createElement("li");
+          li.textContent = text;
+          recommendList.appendChild(li);
+        });
+      }
+    }
+
+    async function analyzeStocks() {
+      const codes = parseCodes(stockCodesInput.value);
+      if (!codes.length) {
+        showStatus("請先輸入至少一檔股票代碼。", "warn");
+        resultBody.innerHTML = "";
+        recommendList.innerHTML = "";
+        emptyRecommend.hidden = false;
+        return;
+      }
+
+      analyzeBtn.disabled = true;
+      showStatus("正在抓取即時資料，請稍候...", "info");
+
+      const jobs = await Promise.all(codes.map((code) => getStockData(code)));
+      const successList = await Promise.all(
+        jobs.filter((item) => item.ok).map((item) => buildAnalysis(item.data))
+      );
+      const failList = jobs.filter((item) => !item.ok);
+      latestAnalysisList = successList;
+      latestFailList = failList;
+      const fallbackCount = jobs.filter((item) => item.ok && item.fallbackUsed).length;
+      renderRows(successList, failList);
+      const fundamentalWarnCount = successList.filter((x) => x.fundamentalWarning).length;
+
+      if (!successList.length) {
+        showStatus("所有股票都抓取失敗，請稍後再試或確認網路連線。", "error");
+      } else if (failList.length) {
+        showStatus(
+          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。股價備援 ${fallbackCount} 檔；基本面降級 ${fundamentalWarnCount} 檔。`,
+          "warn"
+        );
+      } else if (fundamentalWarnCount > 0) {
+        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。`, "warn");
+      } else if (fallbackCount > 0) {
+        showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。`, "info");
+      } else {
+        showStatus(`全部完成，共 ${successList.length} 檔，資料來源 Yahoo。`, "info");
+      }
+
+      analyzeBtn.disabled = false;
+    }
+
+    analyzeBtn.addEventListener("click", analyzeStocks);
+
+    quickFilterBtn.addEventListener("click", () => {
+      if (!latestAnalysisList.length && !latestFailList.length) {
+        showStatus("請先按「分析」取得資料後再篩選。", "warn");
+        return;
+      }
+      const filtered = latestAnalysisList.filter((item) => item.scored.shortTermReady);
+      renderRows(filtered, latestFailList);
+      showStatus(`短線篩選完成：共 ${filtered.length} 檔符合（RSI<30 + MACD翻正 + 突破20MA）。`, "info");
+    });
+
+    clearBtn.addEventListener("click", () => {
+      stockCodesInput.value = "";
+      resultBody.innerHTML = "";
+      recommendList.innerHTML = "";
+      emptyRecommend.hidden = false;
+      latestAnalysisList = [];
+      latestFailList = [];
+      showStatus("", "info");
+    });
+
+    analyzeStocks();
+  </script>
+</body>
+</html>
