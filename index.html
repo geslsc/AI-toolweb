@@ -232,11 +232,11 @@
 <body>
   <div class="container">
     <section class="card">
-      <h1>台股新手選股工具（即時資料）</h1>
+      <h1>台股新手選股工具（收盤價版）</h1>
       <p class="hint">
         一次可輸入多檔股票代碼（逗號分隔），例如：2330, 2317, 0050。
         <br>
-        資料來源：Yahoo Finance（優先）→ TWSE（備援）。分數為教學參考，不是投資建議。
+        股價資料來源：TWSE STOCK_DAY（最近交易日收盤）。分數為教學參考，不是投資建議。
       </p>
       <div class="controls">
         <div>
@@ -257,6 +257,7 @@
             <tr>
               <th>代碼</th>
               <th>名稱</th>
+              <th>資料日期</th>
               <th>現價</th>
               <th>成交量</th>
               <th>5日MA</th>
@@ -326,17 +327,7 @@
     }
 
     function getMarketSessionHint() {
-      const now = new Date();
-      const day = now.getDay();
-      const hour = now.getHours();
-      const minute = now.getMinutes();
-      const current = hour * 60 + minute;
-      const isWeekday = day >= 1 && day <= 5;
-      const isTradingTime = current >= 9 * 60 && current <= 13 * 60 + 30;
-      if (isWeekday && isTradingTime) {
-        return "目前為盤中時段，顯示最近交易資料（以收盤序列為基準）。";
-      }
-      return "目前為休市時段，顯示最近交易日收盤資料。";
+      return "顯示台股最近交易日收盤資料（非盤中即時價）。";
     }
 
     function appendTs(url) {
@@ -504,54 +495,7 @@
       return /^\d{4}$/.test(code);
     }
 
-    function getYahooSymbols(code) {
-      return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
-    }
-
-    async function fetchYahooData(code) {
-      const symbols = getYahooSymbols(code);
-      let lastError = "Yahoo 無可用資料";
-
-      for (const symbol of symbols) {
-        try {
-          const url = `${API_BASE}/api/yahoo-chart?symbol=${encodeURIComponent(symbol)}&interval=1d&range=6mo`;
-          const response = await fetchNoCache(url);
-          if (!response.ok) {
-            lastError = `Yahoo HTTP ${response.status}`;
-            continue;
-          }
-          const payload = await response.json();
-          console.log("[Yahoo Chart]", symbol, payload);
-          const result = payload?.chart?.result?.[0];
-          const quote = result?.indicators?.quote?.[0];
-          const closesRaw = quote?.close || [];
-          const volumesRaw = quote?.volume || [];
-          const closes = closesRaw.filter((x) => Number.isFinite(x));
-          const volumes = volumesRaw.filter((x) => Number.isFinite(x));
-          if (closes.length === 0 && volumes.length === 0) {
-            lastError = "Yahoo 無有效價量資料";
-            continue;
-          }
-
-          return {
-            code,
-            name: result?.meta?.longName || result?.meta?.shortName || STOCK_NAME_MAP[code] || code,
-            source: "YahooClose",
-            priceHistory: closes,
-            volumeHistory: volumes,
-            price: closes.length ? closes[closes.length - 1] : null,
-            volume: volumes.length ? volumes[volumes.length - 1] : null,
-            marketTime: null
-          };
-        } catch (error) {
-          lastError = String(error.message || error);
-        }
-      }
-
-      throw new Error(lastError);
-    }
-
-    function getRecentMonthDates(totalMonths = 6) {
+    function getRecentMonthDates(totalMonths = 3) {
       const dates = [];
       const now = new Date();
       for (let i = 0; i < totalMonths; i += 1) {
@@ -560,12 +504,15 @@
         const m = String(d.getMonth() + 1).padStart(2, "0");
         dates.push(`${y}${m}01`);
       }
-      return dates.reverse();
+      return dates;
     }
 
-    async function fetchTwseData(code) {
-      const monthKeys = getRecentMonthDates(6);
+    async function fetchTwseLatestCloseData(code) {
+      const monthKeys = getRecentMonthDates(3);
       const allRows = [];
+      let latestTradeDate = null;
+      let latestClose = null;
+      let latestVolume = null;
 
       for (const monthKey of monthKeys) {
         const url = `${API_BASE}/api/twse-stock-day?date=${monthKey}&stockNo=${encodeURIComponent(code)}`;
@@ -574,20 +521,32 @@
         const payload = await response.json();
         console.log("[TWSE STOCK_DAY]", code, monthKey, payload);
         if (!Array.isArray(payload?.data)) continue;
-        allRows.push(...payload.data);
+
+        const parsedMonthRows = payload.data
+          .map((row) => ({
+            tradeDate: row[0],
+            close: parseNumber(row[6]),
+            volume: parseNumber(row[1])
+          }))
+          .filter((row) => Number.isFinite(row.close) && Number.isFinite(row.volume));
+
+        if (!parsedMonthRows.length) continue;
+        allRows.push(...parsedMonthRows);
+
+        if (!latestTradeDate) {
+          const last = parsedMonthRows[parsedMonthRows.length - 1];
+          latestTradeDate = last.tradeDate;
+          latestClose = last.close;
+          latestVolume = last.volume;
+        }
       }
 
-      const parsed = allRows
-        .map((row) => ({
-          close: parseNumber(row[6]),
-          volume: parseNumber(row[1])
-        }))
-        .filter((row) => Number.isFinite(row.close) && Number.isFinite(row.volume));
+      if (!latestTradeDate || !Number.isFinite(latestClose) || !Number.isFinite(latestVolume)) {
+        throw new Error("找不到最近交易資料");
+      }
 
-      if (parsed.length < 1) throw new Error("TWSE 資料不足");
-
-      const closes = parsed.map((row) => row.close);
-      const volumes = parsed.map((row) => row.volume);
+      const closes = allRows.map((row) => row.close);
+      const volumes = allRows.map((row) => row.volume);
 
       return {
         code,
@@ -595,9 +554,15 @@
         source: "TWSE",
         priceHistory: closes,
         volumeHistory: volumes,
-        price: closes[closes.length - 1],
-        volume: volumes[volumes.length - 1]
+        tradeDate: latestTradeDate,
+        price: latestClose,
+        volume: latestVolume,
+        marketTime: null
       };
+    }
+
+    function getYahooSymbols(code) {
+      return STOCK_SUFFIXES.map((suffix) => `${code}${suffix}`);
     }
 
     async function fetchYahooFundamentals(code) {
@@ -721,20 +686,14 @@
 
     async function getStockData(code) {
       try {
-        const yahoo = await fetchYahooData(code);
-        return { ok: true, data: yahoo, fallbackUsed: false };
-      } catch (yahooError) {
-        try {
-          const twse = await fetchTwseData(code);
-          return { ok: true, data: twse, fallbackUsed: true };
-        } catch (twseError) {
-          return {
-            ok: false,
-            code,
-            fallbackUsed: false,
-            error: "資料取得失敗，請確認股票代碼或稍後再試"
-          };
-        }
+        const twse = await fetchTwseLatestCloseData(code);
+        return { ok: true, data: twse };
+      } catch (_error) {
+        return {
+          ok: false,
+          code,
+          error: "資料取得失敗，請確認股票代碼或稍後再試"
+        };
       }
     }
 
@@ -777,6 +736,7 @@
         fundamentalWarning: fundamental.warning || "",
         fundamentalScoreable: fundamental.scoreable !== false,
         marketDataSource: stockData.source,
+        tradeDate: stockData.tradeDate || null,
         marketTime: stockData.marketTime || null,
         marketDataWarning: "",
         entryPrice: Number.isFinite(stockData.price) ? stockData.price : null,
@@ -817,6 +777,7 @@
         row.innerHTML = `
           <td>${item.code}</td>
           <td>${item.name}</td>
+          <td>${item.tradeDate || "N/A"}</td>
           <td title="來源：${item.marketDataSource}${item.marketTime ? `，更新：${new Date(item.marketTime).toLocaleString("zh-TW")}` : ""}">${formatNumberOrNA(item.price, 2)}</td>
           <td title="來源：${item.marketDataSource}">${formatIntegerOrNA(item.volume)}</td>
           <td>${formatNumberOrNA(item.ma5, 2)}</td>
@@ -846,7 +807,7 @@
         const missRow = document.createElement("tr");
         missRow.innerHTML = `
           <td>${failed.code}</td>
-          <td colspan="16" style="color:#b91c1c;">資料抓取失敗：${failed.error}</td>
+          <td colspan="17" style="color:#b91c1c;">${failed.error}</td>
         `;
         resultBody.appendChild(missRow);
       });
@@ -881,7 +842,7 @@
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>${code}</td>
-            <td colspan="16" style="color:#b91c1c;">股票代碼格式錯誤</td>
+            <td colspan="17" style="color:#b91c1c;">股票代碼格式錯誤</td>
           `;
           resultBody.appendChild(row);
         });
@@ -890,7 +851,7 @@
       }
 
       analyzeBtn.disabled = true;
-      showStatus("正在抓取即時資料，請稍候...", "info");
+      showStatus("正在抓取最近交易日收盤資料，請稍候...", "info");
 
       const jobs = await Promise.all(codes.map((code) => getStockData(code)));
       const successList = await Promise.all(
@@ -899,7 +860,6 @@
       const failList = jobs.filter((item) => !item.ok);
       latestAnalysisList = successList;
       latestFailList = failList;
-      const fallbackCount = jobs.filter((item) => item.ok && item.fallbackUsed).length;
       renderRows(successList, failList);
       const fundamentalWarnCount = successList.filter((x) => x.fundamentalWarning).length;
 
@@ -907,13 +867,11 @@
         showStatus("所有股票都抓取失敗，請稍後再試或確認網路連線。", "error");
       } else if (failList.length) {
         showStatus(
-          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。股價備援 ${fallbackCount} 檔；基本面降級 ${fundamentalWarnCount} 檔。${getMarketSessionHint()}`,
+          `完成 ${successList.length} 檔，失敗 ${failList.length} 檔。基本面降級 ${fundamentalWarnCount} 檔。${getMarketSessionHint()}`,
           "warn"
         );
       } else if (fundamentalWarnCount > 0) {
-        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面改用本地備援。${getMarketSessionHint()}`, "warn");
-      } else if (fallbackCount > 0) {
-        showStatus(`全部完成，共 ${successList.length} 檔（其中 ${fallbackCount} 檔使用 TWSE 備援）。${getMarketSessionHint()}`, "info");
+        showStatus(`全部完成 ${successList.length} 檔，但有 ${fundamentalWarnCount} 檔基本面資料不足未納入評分。${getMarketSessionHint()}`, "warn");
       } else {
         showStatus(`全部完成，共 ${successList.length} 檔。${getMarketSessionHint()}`, "info");
       }
